@@ -3,8 +3,11 @@ import cv2
 import os
 import torch
 import json
+import pickle
 from time import time
 from PIL import Image
+from diamondSpace import DiamondSpace
+from vpd_utils import cvt_diamond_space
 import matplotlib.pylab as plt
 
 import numpy as np
@@ -26,10 +29,11 @@ optical_flow_parameters = dict(winSize=(21, 21), minEigThreshold=1e-4)
 
 
 class Tracks(object):
-    def __init__(self, video_src, detect_interval=20, draw_interval=10):
+    def __init__(self, video_src, detect_interval=20, draw_interval=10, VP_interval=30):
         self.tracks = []
         self.detectInterval = detect_interval
         self.draw_interval = draw_interval
+        self.updateVP_interval = VP_interval
         self.camera = cv2.VideoCapture(video_src)
         self.frame_count = 0
         self.detectModel = load_model()
@@ -38,13 +42,20 @@ class Tracks(object):
         self.previous_frame = None
         self.features = []
         self.diff_threshold = 1
-        self.maxFeatureNum = 100
+        self.maxFeatureNum = 50
         self.frame_height = 0
         self.frame_width = 0
         self.feature_determine_threshold = 0.1
         self.tracks_filter_threshold = 0.005
 
-    def getTracks(self):
+        # vanish point
+        self.vp_1 = []
+        self.vp_2 = []
+        self.vp_3 = []
+
+        self.DiamondSpace = None
+
+    def run(self):
         self.frame_count = 0
         while True:
             start = time()
@@ -53,6 +64,7 @@ class Tracks(object):
             if self.frame_count == 0:
                 self.init_frame = frame
                 self.frame_height, self.frame_width = frame.shape[:2]
+                self.DiamondSpace = DiamondSpace(d=min(self.frame_height, self.frame_width) / 2, size=256)
 
             self.current_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -74,20 +86,26 @@ class Tracks(object):
                     if not isGood:
                         continue
                     fp.append(tuple(fc.ravel().tolist()))
+
                     if len(fp) > self.maxFeatureNum:
-                        # del fp[0]
-                        x, y = fp[-1]
-                        if 0 + self.frame_width * self.feature_determine_threshold < x < (
-                                1 - self.feature_determine_threshold) * self.frame_width and (
-                                0 + self.frame_height * self.feature_determine_threshold < y < (
-                                1 - self.feature_determine_threshold) * self.frame_height):
-                            del fp[0]
-                        else:
-                            continue
+                        del fp[0]
+                        if self.get_track_length(fp) > 30:
+                            temp = fp.copy()
+                            self.tracks.append(temp)
+                        # x, y = fp[-1]
+                        # print(f"the length is {self.get_track_length(fp)}")
+                        # if 0 + self.frame_width * self.feature_determine_threshold < x < (
+                        #         1 - self.feature_determine_threshold) * self.frame_width and (
+                        #         0 + self.frame_height * self.feature_determine_threshold < y < (
+                        #         1 - self.feature_determine_threshold) * self.frame_height):
+                        #     del fp[0]
+                        # else:
+                        #     continue
                     new_tracks.append(fp)
                 # 开头的tracks在KLT的作用下已经成为一点
-                start_index = int(0.4 * len(new_tracks))
-                self.tracks += new_tracks[start_index:]
+                # start_index = int(0.4 * len(new_tracks))
+                # self.tracks += new_tracks[start_index:]
+                # self.tracks += new_tracks
                 cv2.polylines(frame, [np.int32(tr) for tr in new_tracks], False, (0, 255, 0))
 
             if self.frame_count % self.detectInterval == 0:
@@ -104,6 +122,8 @@ class Tracks(object):
                     for x, y in np.float32(p).reshape(-1, 2):
                         self.features.append([(x, y)])
 
+            # if (self.frame_count + 1) % self.updateVP_interval == 0:
+            #     frame = self.get_vps(frame)
             self.frame_count += 1
             self.previous_frame = self.current_frame.copy()
             cv2.imshow('vehicle tracks', frame)
@@ -136,13 +156,28 @@ class Tracks(object):
             classes_str = [category_index[i] for i in predict_classes[predict_scores > threshold]]
         return filter_boxes, classes_str
 
-    def draw_all_tracks(self, save_name='all_tracks.jpg', save_path='./'):
+    @staticmethod
+    def get_track_length(track):
+        x, y = track[0]
+        length = 0
+        for j in np.arange(1, len(track), 1):
+            xn = track[j][0]
+            yn = track[j][1]
+            diff_x = (xn - x)
+            diff_y = (yn - y)
+            length += np.sqrt(diff_x * diff_x + diff_y * diff_y)
+        return length / len(track)
+
+    def draw_all_tracks(self, save_name='all_tracks.jpg', save_path='./', save_tracks_data=False):
         display = self.init_frame.copy()
         print(len(self.tracks))
         self.filter_tracks()
         print(len(self.tracks))
         cv2.polylines(display, [np.int32(tr) for tr in self.tracks], False, (0, 255, 0))
         cv2.imwrite(os.path.join(save_path, save_name), display)
+        if save_tracks_data:
+            with open(os.path.join(save_path, 'tracks.data'), 'wb') as f:
+                pickle.dump(self.tracks, f)
 
     def filter_tracks(self):
         new_tracks = []
@@ -153,6 +188,38 @@ class Tracks(object):
             else:
                 new_tracks.append(track)
         self.tracks = new_tracks
+
+    def get_vps(self):
+        lines = cvt_diamond_space(self.init_frame, self.tracks)
+        self.DiamondSpace.insert(lines)
+        vps, weight, vpd_s = self.DiamondSpace.find_peaks(t=0.9, )
+
+        self.vp_1 = vpd_s[0]
+
+        img = cv2.cvtColor(self.init_frame, cv2.COLOR_BGR2RGB)
+        # for vp in vps:
+        #     cv2.circle(frame, (int(vp[0]), int(vp[1])), radius=3, color=(255, 0, 0))
+        # return frame
+        print("numbers of vps", len(vps))
+        size = self.DiamondSpace.size
+        scale = self.DiamondSpace.scale
+        _, ax = plt.subplots(1, 2, figsize=(20, 10))
+        ax[0].imshow(self.DiamondSpace.attach_spaces(), cmap="Greys", extent=(
+            (-size + 0.5) / scale, (size - 0.5) / scale, (size - 0.5) / scale,
+            (-size + 0.5) / scale))
+        ax[0].set(title="Accumulator", xticks=np.linspace(-size + 1, size - 1, 5) / scale,
+                  yticks=np.linspace(-size + 1, size - 1, 5) / scale)
+        ax[0].plot(vpd_s[:, 0] / scale, vpd_s[:, 1] / scale, "r+")
+        ax[0].invert_yaxis()
+
+        ax[1].imshow(img)
+        ax[1].set(title="first vanishing point in image")
+        ax[1].plot(vps[0, 0], vps[0, 1], 'r+')
+
+        # plt.imshow(img)
+        # plt.plot(vps[:, 0], vps[:, 1], 'r+')
+        # # plt.show()
+        plt.savefig('first_vp.jpg')
 
 
 def load_model():
@@ -194,6 +261,7 @@ if __name__ == '__main__':
     # video_path = '../rouen_video.avi'
     cameraTrack = Tracks(video_path)
 
-    cameraTrack.getTracks()
+    cameraTrack.run()
     # cameraTrack.filter_tracks()
-    cameraTrack.draw_all_tracks('test.jpg')
+    cameraTrack.draw_all_tracks(save_tracks_data=True)
+    cameraTrack.get_vps()
