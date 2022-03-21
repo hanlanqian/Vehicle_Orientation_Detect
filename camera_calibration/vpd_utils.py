@@ -3,37 +3,68 @@ import numpy as np
 import math
 
 
-def Cvt2ParallelSpace(mat):
-    # 将平面坐标系的点转到Y, X, -Y轴的平行坐标系(u, v)
-    # u = -Y 等价与 u = -1
-    # u = Y 等价与 u = 1
-    # u = X 等价与 u = 0
+def start_end_line(points):
+    lines = []
+    for p in points:
+        x1, y1, x2, y2 = p
+        a = y2 - y1
+        b = x1 - x2
+        c = x2 * y1 - x1 * y2
+        lines.append([a, b, c])
+    if lines:
+        lines = np.vstack(lines)
+    return lines
 
-    mat[mat > 0] = mat[mat > 0]
-    print(mat)
 
-
-def draw_box(frame, box):
-    cv2.rectangle(frame, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), [0, 0, 255], thickness=3)
+def draw_points(frame, points):
+    for p in points:
+        x, y = p
+        if x < 0 or y < 0:
+            print('skip')
+            continue
+        else:
+            cv2.circle(frame, (int(x), int(y)), 2, (0, 255, 255), 2)
+    cv2.imshow('line', frame)
+    if cv2.waitKey(0) & 0xff == 27:
+        cv2.destroyAllWindows()
     return frame
 
 
-def cvt_diamond_space(img, tracks):
+def draw_point_line(frame, points):
+    for p in points:
+        x1, y1, x2, y2 = p
+        cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
+    cv2.imshow('line', frame)
+    if cv2.waitKey(0) & 0xff == 27:
+        cv2.destroyAllWindows()
+    return frame
+
+
+def draw_lines(img, lines):
+    height, width = 720, 1280
+    for line in lines:
+        a, b, c = line
+        if b != 0:
+            x = np.array([0, width])
+            y = (-a * x - c) / b
+        else:
+            x = np.full(2, -c / a)
+            y = np.array([0, height])
+        cv2.line(img, (int(x[0]), int(y[0])), (int(x[1]), int(y[1])), (0, 255, 0), thickness=2)
+    return img
+
+
+def cvt_diamond_space(tracks):
     """
-    :param img: original image plane
     :param tracks:
-    :return:lines:
+    :return:lines: [ax+by+c=0]
     [a, b, c]
     """
-    h, w = img.shape[:2]
-    gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    mask = np.zeros_like(gray_img)
     lines = []
     for track in tracks:
         track = np.array(track)
         k, b = np.polyfit(track[:, 0], track[:, 1], deg=1)
         lines.append([k, -1, b])
-    # cv2.polylines(mask, [np.int32(tr) for tr in tracks], isClosed=False, thickness=3, color=255)
     return np.array(lines)
 
 
@@ -114,5 +145,21 @@ def computeCameraCalibration(_vp1, _vp2, _pp):
     return vp1, vp2, vp3, pp, roadPlane, focal
 
 
-def oPoint_to_dPoint(tracks, ):
-    return
+def get_intersections(points1, points2):
+    """
+    return the intersection of two lines.
+    :param points1: the start and end point of first line
+    :param points2: the start and end point of second line
+    :return: intersection
+    """
+    x1, y1, x2, y2 = points1
+    x3, y3, x4, y4 = points2
+    a1 = y2 - y1
+    b1 = x1 - x2
+    c1 = x2 * y1 - x1 * y2
+    a2 = y4 - y3
+    b2 = x3 - x4
+    c2 = x4 * y3 - x3 * y4
+    x = (b2 * c1 / b1 - c2) / (a2 - a1 * b2 / b1)
+    y = - (a1 * x + c1) / b1
+    return (x, y)
