@@ -367,7 +367,7 @@ class DiamondSpace:
         for i, line in enumerate(lines):
             a, b, c = line
             # if i==361:
-            print(abs(a * peak[0] + b * peak[1] + c) / np.linalg.norm(np.array([a, b])))
+            # print(abs(a * peak[0] + b * peak[1] + c) / np.linalg.norm(np.array([a, b])))
             if abs(a * peak[0] + b * peak[1] + c) / np.linalg.norm(np.array([a, b])) <= threshold:
                 yield i, True, line
             else:

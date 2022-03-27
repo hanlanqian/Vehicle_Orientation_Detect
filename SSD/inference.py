@@ -48,7 +48,3 @@ def get_data_transform():
     return transforms.Compose([transforms.Resize(),
                                transforms.ToTensor(),
                                transforms.Normalization()])
-
-
-if __name__ == "__main__":
-    main()

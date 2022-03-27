@@ -20,7 +20,7 @@ def draw_points(frame, points):
     for p in points:
         x, y = p
         if x < 0 or y < 0:
-            print('skip')
+            # print('skip')
             continue
         else:
             cv2.circle(frame, (int(x), int(y)), 2, (0, 255, 255), 2)
@@ -116,6 +116,51 @@ def getViewpoint(p, vp1, vp2, pp):
     return viewPoint
 
 
+def getViewpointFromCalibration(p, principal_point, focal, rotation):
+    # rotation : WCS -> CCS   rotation.T: CCS -> WCS
+    pW = np.concatenate((p[:2] - principal_point[:2], [focal]))
+    pW /= np.linalg.norm(pW)
+    viewPoint = rotation.T @ pW
+    return viewPoint
+
+
+def drawViewpoint(img, p, vp1, vp2, vp3, scale=30):
+    direction1 = vp1 - p
+    direction1 /= 1 / scale * np.linalg.norm(direction1)
+    direction2 = vp2 - p
+    direction2 /= 1 / scale * np.linalg.norm(direction2)
+    direction3 = vp3 - p
+    direction3 /= 1 / scale * np.linalg.norm(direction3)
+    cv2.line(img, p, (p + direction1).astype(np.int32), (0, 255, 0), 2)
+    cv2.line(img, p, (p + direction2).astype(np.int32), (255, 0, 0), 2)
+    cv2.line(img, p, (p + direction3).astype(np.int32), (0, 0, 255), 2)
+
+    return img
+
+
+def drawCalibration(img, vp1, vp2, vp3, slices=3, offsetPercent=0.2, scale=30):
+    display = img.copy()
+    height, width = img.shape[:2]
+    heightOffset = height * offsetPercent
+    widthOffset = width * offsetPercent
+    height *= 1 - offsetPercent
+    width *= 1 - offsetPercent
+    for i in range(slices):
+        for j in range(slices):
+            p = np.array([int(i / slices * width + widthOffset), int(j / slices * height + heightOffset)])
+            direction1 = vp1 - p
+            direction1 /= 1 / scale * np.linalg.norm(direction1)
+            direction2 = vp2 - p
+            direction2 /= 1 / scale * np.linalg.norm(direction2)
+            direction3 = vp3 - p
+            direction3 /= 1 / scale * np.linalg.norm(direction3)
+            cv2.line(display, p, (p + direction1).astype(np.int32), (0, 255, 0), 2)
+            cv2.line(display, p, (p + direction2).astype(np.int32), (255, 0, 0), 2)
+            cv2.line(display, p, (p + direction3).astype(np.int32), (0, 0, 255), 2)
+
+    return display
+
+
 def get_third_VP(vp1, vp2, f, width, height):
     Ut = np.array([vp1[0], vp1[1], f])
     Vt = np.array([vp2[0], vp2[1], f])
@@ -124,7 +169,7 @@ def get_third_VP(vp1, vp2, f, width, height):
     return W
 
 
-def computeCameraCalibration(_vp1, _vp2, _pp):
+def computeCameraCalibration(_vp1, _vp2, _pp, cameraH=10):
     """
     Compute camera calibration from two van points and principal point. Variables end with W represent their world coordinate
     :param _vp1 first vanishing point (vp1_x, vp1_y)
@@ -138,11 +183,27 @@ def computeCameraCalibration(_vp1, _vp2, _pp):
     vp1W = np.concatenate((_vp1, [focal]))
     vp2W = np.concatenate((_vp2, [focal]))
     ppW = np.concatenate((_pp, [0]))
-    vp3W = np.cross(vp1W - ppW, vp2W - ppW)
+    vp1_c = vp1W - ppW
+    vp2_c = vp2W - ppW
+    vp3W = np.cross(vp2_c, vp1_c)
     vp3 = np.concatenate((vp3W[0:2] / vp3W[2] * focal + ppW[0:2], [1]))
     vp3Direction = np.concatenate((vp3[0:2], [focal])) - ppW
-    roadPlane = np.concatenate((vp3Direction / np.linalg.norm(vp3Direction), [10]))
-    return vp1, vp2, vp3, pp, roadPlane, focal
+    roadPlane = np.concatenate((vp3Direction / np.linalg.norm(vp3Direction), [cameraH]))
+    P = np.array([[focal, 0, _pp[0]],
+                  [0, focal, _pp[1], ],
+                  [0, 0, 1]])
+
+    # World Coordinate to Camera Coordinate
+    R = np.stack([vp1_c / np.linalg.norm(vp1_c), vp2_c / np.linalg.norm(vp2_c), vp3W / np.linalg.norm(vp3W)], axis=1)
+
+    return vp1, vp2, vp3, pp, roadPlane, focal, P, R
+
+
+def coordinate_transform(p, focal, roadPlane, delta=10):
+    pW = np.concatenate((p, [focal, 0]))
+    pW_t = np.concatenate((p, [focal])).transpose()
+    P = - delta / np.dot(pW, roadPlane) * pW_t
+    return P
 
 
 def get_intersections(points1, points2):
