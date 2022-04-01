@@ -7,23 +7,22 @@ from calibration_model import Calibration
 if __name__ == '__main__':
     json_path = "../SSD/pascal_voc_classes.json"
     # video_path = '../1-2-981_Trim.mp4'
-    video_path = r"E:\datasets\surveilliance\v5.avi"
-    # roi = [(221, 9), (789, 1431), (2560, 1440), (2560, 0)]
-    roi = [(278, 1), (90, 700), (88, 783), (477, 679)]
+    # video_path = r"E:\datasets\surveilliance\v6.avi"
+    video_path = r"E:\datasets\0330数据集\o1.mp4"
     # video_path = '../sherbrooke_video.avi'
     # video_path = '../rouen_video.avi'
-    cameraTrack = Calibration(video_path, roi)
+    cameraTrack = Calibration(video_path)
     RunFlag = False
-    # RunFlag = True
+    visualizeFlag = True
     if RunFlag:
         cameraTrack.load_ssd_model(json_path)
         cameraTrack.run()
         # cameraTrack.draw_all_tracks()
-        cameraTrack.get_vp1(visualize=True)
+        cameraTrack.get_vp1(visualize=visualizeFlag)
         # print(cameraTrack.vp_1)
-        cameraTrack.get_vp2(visualize=True)
+        cameraTrack.get_vp2(visualize=visualizeFlag)
         # print(cameraTrack.vp_2)
-        cameraTrack.save_calibration(visualize=True)
+        cameraTrack.save_calibration(visualize=visualizeFlag)
     else:
         cameraTrack.load_calibration('./pics/calibrations.npy')
         cameraTrack.load_ssd_model(json_path)

@@ -30,14 +30,16 @@ def draw_points(frame, points):
     return frame
 
 
-def draw_point_line(frame, points):
+def draw_point_line(frame, points, visualFlag=False):
+    display = frame.copy()
     for p in points:
         x1, y1, x2, y2 = p
-        cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
-    cv2.imshow('line', frame)
-    if cv2.waitKey(0) & 0xff == 27:
-        cv2.destroyAllWindows()
-    return frame
+        cv2.line(display, (x1, y1), (x2, y2), (255, 255, 0), 2)
+    if visualFlag:
+        cv2.imshow('line', display)
+        if cv2.waitKey(0) & 0xff == 27:
+            cv2.destroyAllWindows()
+    return display
 
 
 def draw_lines(img, lines):

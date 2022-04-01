@@ -8,8 +8,8 @@ import matplotlib.pylab as plt
 
 from PIL import Image
 from vpd_utils import cvt_diamond_space, start_end_line, draw_point_line, draw_points, computeCameraCalibration, \
-    get_intersections, getViewpoint, getViewpointFromCalibration, drawViewpoint
-from edges import neighborhood
+    get_intersections, getViewpoint, getViewpointFromCalibration, drawViewpoint, draw_lines
+from edges import neighborhood, accumulate_orientation
 from diamondSpace import DiamondSpace
 from SSD.inference import time_synchronized, get_data_transform, load_model
 from time import time
@@ -21,8 +21,14 @@ optical_flow_parameters = dict(winSize=(21, 21), minEigThreshold=1e-4)
 hough_lines_parameters = dict(rho=1.0, theta=np.pi / 180, threshold=100, minLineLength=50, maxLineGap=15)
 
 
+def display(frame):
+    cv2.imshow('test', frame)
+    cv2.waitKey(0)
+    cv2.destroyWindow('test')
+
+
 class Calibration(object):
-    def __init__(self, video_src, roi, detect_interval=20, track_interval=10):
+    def __init__(self, video_src, detect_interval=20, track_interval=10):
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.tracks = []  # vehicle tracks
@@ -30,7 +36,6 @@ class Calibration(object):
         self.background = None
         self.detectInterval = detect_interval
         self.track_interval = track_interval
-        self.roi = np.array(roi)
         self.camera = cv2.VideoCapture(video_src)
         self.frame_count = 0
         self.detectModel = None
@@ -60,6 +65,10 @@ class Calibration(object):
             start = time()
 
             flag, frame = self.camera.read()
+
+            if not flag:
+                print('no frame grabbed!')
+                break
             h, w = frame.shape[:2]
             if h * w > 1e6:
                 frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
@@ -71,9 +80,6 @@ class Calibration(object):
 
             self.current_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            if not flag:
-                print('no frame grabbed!')
-                return 0
             if len(self.features) > 0:
                 # KLT Tracker
                 pimg, cimg = self.previous_frame, self.current_frame
@@ -104,7 +110,7 @@ class Calibration(object):
                 mask = np.zeros_like(self.current_frame)
                 boxes, classes_str = self.detect_car(frame)
                 if len(boxes) > 0:
-                    for box, box_class in zip(boxes, classes_str):
+                    for box, boxco_class in zip(boxes, classes_str):
                         if box_class in ['car', "bus"]:
                             mask[box[1]:box[3], box[0]:box[2]] = 255
                             points = self.lines_from_box(frame, box)
@@ -139,22 +145,26 @@ class Calibration(object):
             flag, frame = self.camera.read()
             if not flag:
                 print('no frame grabbed!')
-                return 0
+                break
             else:
+                h, w = frame.shape[:2]
+                if h * w > 1e6:
+                    frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
                 display = frame.copy()
                 if self.frame_count % self.detectInterval == 0:
                     boxes, classes_str = self.detect_car(frame)
                     for box in boxes:
                         center_x = (box[0] + box[2]) / 2
                         center_y = (box[1] + box[3]) / 2
+
                         cv2.circle(display, (int(center_x), int(center_y)), 3, (0, 255, 255), 2)
                         # viewpoint = getViewpoint(np.array([center_x, center_y]), self.vp_1, self.vp_2,
                         #                          self.principal_point)
-                        # viewpoint = getViewpointFromCalibration(np.array([center_x, center_y]), self.principal_point,
-                        #                                         self.focal, self.r_matrix)
-                        # strings = "(" + ",".join(list(map(lambda u: str(np.round(u, 2)), viewpoint))) + ")"
-                        # cv2.putText(display, strings, (int(center_x), int(center_y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        #             (255, 255, 0), 2)
+                        viewpoint = getViewpointFromCalibration(np.array([center_x, center_y]), self.principal_point,
+                                                                self.focal, self.r_matrix)
+                        strings = "(" + ",".join(list(map(lambda u: str(np.round(u, 2)), viewpoint))) + ")"
+                        cv2.putText(display, strings, (int(center_x), int(center_y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                    (255, 255, 0), 2)
                         display = drawViewpoint(display, (int(center_x), int(center_y)), self.vp_1[:2], self.vp_2[:2],
                                                 self.vp_3[:2])
 
@@ -220,22 +230,17 @@ class Calibration(object):
             with open(os.path.join(save_path, 'tracks.data'), 'wb') as f:
                 pickle.dump(self.tracks, f)
 
-    def lines_from_box(self, frame, box, drawFlag=False):
+    def lines_from_box(self, frame, box, threshold=0.25, drawFlag=False):
         vehicle_img = frame[box[1]:box[3], box[0]:box[2]]
         height, width = vehicle_img.shape[:2]
         edges = cv2.Canny(vehicle_img, 200, 200, L2gradient=True)
         orientation, quality = neighborhood(edges)
-        unique = np.unique(quality)
-        sum = 0
-        for u in unique:
-            if sum > 1 / 2 * height * width:
-                break
-            sum += np.sum(quality == u)
-        edges[quality > u] = 255
-        edges[quality <= u] = 0
+        accumulation, t = accumulate_orientation(orientation, quality)
+        res = cv2.addWeighted(accumulation, 0.8, edges, 0.2, 0)
+        # _, res = cv2.threshold(res, np.percentile(res[res!=0], 100 * (1 - threshold)), 255, cv2.THRESH_BINARY)
         # thres, edges = cv2.threshold(quality, 0, 255, cv2.THRESH_OTSU)
         # lines = get_lines(edges, orientation, box)
-        points = cv2.HoughLinesP(edges, 1.0, np.pi / 180, 30, minLineLength=30, maxLineGap=20)
+        points = cv2.HoughLinesP(res, 1.0, np.pi / 180, 30, minLineLength=30, maxLineGap=20)
         if points is not None:
             points = points.reshape(-1, 4)
             points[:, [0, 2]] += box[0]
@@ -244,13 +249,15 @@ class Calibration(object):
                 for p in points:
                     x1, y1, x2, y2 = p
                     cv2.line(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                cv2.imshow('frame', frame)
+                cv2.waitKey(0)
+                cv2.destroyWindow('frame')
                 return frame
         return points
 
     def detect_lines(self, frame):
 
         img_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        cv2.fillPoly(img_gray, [self.roi], 0)
         img_filter = cv2.medianBlur(img_gray, 7)
         sobel = cv2.Sobel(img_filter, -1, 0, 1)
         _, res = cv2.threshold(sobel, 0, 255, cv2.THRESH_OTSU)
@@ -278,22 +285,20 @@ class Calibration(object):
             ax[0].set(title="Accumulator", xticks=np.linspace(-size + 1, size - 1, 5) / scale,
                       yticks=np.linspace(-size + 1, size - 1, 5) / scale)
             ax[0].plot(vpd_s[0, 0] / scale, vpd_s[0, 1] / scale, "ro", markersize=11)
-            ax[0].plot(vpd_s[1:, 0] / scale, vpd_s[1:, 1] / scale, "go", markersize=11)
+            # ax[0].plot(vpd_s[1:, 0] / scale, vpd_s[1:, 1] / scale, "go", markersize=11)
             ax[0].invert_yaxis()
 
             ax[1].imshow(img)
             ax[1].set(title="first vanishing point in image")
             ax[1].plot(vps[0, 0], vps[0, 1], 'ro', markersize=11)
-            ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
+            # ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
 
             plt.savefig('./pics/first_vp1.jpg')
 
     def get_vp2(self, visualize=False):
         points = np.vstack(self.edgelets)
         lines = start_end_line(points)
-        # test_img = draw_lines(self.init_frame, lines)
-        index = self.DiamondSpace.filter_lines_from_peak(self.vp_1, lines)
-
+        index = self.DiamondSpace.filter_lines_from_peak(self.vp_1, lines, 200)
         vps, values, vpd_s = self.DiamondSpace.find_peaks(t=0.9, )
         # vps中权重最大的一个点取为第二消失点
         self.vp_2 = vps[0][:2]
@@ -302,7 +307,10 @@ class Calibration(object):
             print("numbers of vps", len(vps))
             size = self.DiamondSpace.size
             scale = self.DiamondSpace.scale
-
+            edgelets = draw_point_line(self.init_frame, points, visualFlag=False)
+            edgelets_filter = draw_point_line(self.init_frame, points[index], visualFlag=False)
+            cv2.imwrite('./pics/edgelets.jpg', edgelets)
+            cv2.imwrite('./pics/edgelets_filter.jpg', edgelets_filter)
             # 第一消失点可视化
             _, ax = plt.subplots(1, 2, figsize=(20, 10))
             ax[0].imshow(self.DiamondSpace.attach_spaces(), cmap="Greys", extent=(
@@ -343,7 +351,7 @@ class Calibration(object):
             plt.plot(vp1[0], vp1[1], 'ro', markersize=11)
             plt.plot(vp2[0], vp2[1], 'ro', markersize=11)
             plt.plot(vp3[0], vp3[1], 'ro', markersize=11)
-            plt.savefig("all_vps.jpg")
+            plt.savefig("./pics/all_vps.jpg")
         return calibration
 
     def load_calibration(self, path):

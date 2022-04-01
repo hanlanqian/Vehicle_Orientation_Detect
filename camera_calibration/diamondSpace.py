@@ -351,10 +351,10 @@ class DiamondSpace:
 
         return np.vstack(peaks), np.hstack(values), np.vstack(peaks_ds)
 
-    def filter_lines_from_peak(self, peak, lines):
+    def filter_lines_from_peak(self, peak, lines, close_threshold=200):
         new_lines = []
         index = []
-        for i, flag, line in self.is_close(peak, lines, 200):
+        for i, flag, line in self.is_close(peak, lines, close_threshold):
             if not flag:
                 index.append(i)
                 new_lines.append(line)
