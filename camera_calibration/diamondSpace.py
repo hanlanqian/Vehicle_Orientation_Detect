@@ -1,6 +1,6 @@
 import numpy as np
 from skimage.feature import peak_local_max
-from skimage.morphology.grey import erosion, dilation
+from skimage.morphology import erosion, dilation
 
 
 def _validate_lines(x: np.ndarray):

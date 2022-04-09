@@ -7,29 +7,21 @@ import numpy as np
 import matplotlib.pylab as plt
 
 from PIL import Image
-from vpd_utils import cvt_diamond_space, start_end_line, draw_point_line, draw_points, computeCameraCalibration, \
-    get_intersections, getViewpoint, getViewpointFromCalibration, drawViewpoint, draw_lines
+from camera_calibration.vpd_utils import cvt_diamond_space, start_end_line, draw_point_line, draw_points, \
+    computeCameraCalibration, get_intersections, getViewpoint, getViewpointFromCalibration, drawViewpoint, draw_lines
 from utils import get_pair_keypoints
-from edgelets import neighborhood, accumulate_orientation
-from diamondSpace import DiamondSpace
-from SSD.inference import time_synchronized, get_data_transform, load_model
+from camera_calibration.edgelets import neighborhood, accumulate_orientation
+from camera_calibration.diamondSpace import DiamondSpace
+from yolov5.model import YoloTensorrt
 from openpifpaf.predictor import Predictor
 from time import time
 
 good_features_parameters = dict(maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7, useHarrisDetector=True,
                                 k=0.04)
-draw_circle_parameters = dict(radius=3, color=(0, 0, 255), thickness=3, )
 optical_flow_parameters = dict(winSize=(21, 21), minEigThreshold=1e-4)
-hough_lines_parameters = dict(rho=1.0, theta=np.pi / 180, threshold=100, minLineLength=50, maxLineGap=15)
 
 
-def display(frame):
-    cv2.imshow('test', frame)
-    cv2.waitKey(0)
-    cv2.destroyWindow('test')
-
-
-class Calibration(object):
+class Calibration_Yolo(object):
     def __init__(self, video_src, detect_interval=20, track_interval=10):
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -162,18 +154,20 @@ class Calibration(object):
                 #     frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
                 #     self.scale = 0.5
                 if self.frame_count % self.detectInterval == 0:
-                    boxes, classes_str = self.detect_car(frame)
+                    start = time()
+                    boxes = self.detect_car(frame)
+                    print(f"detect: {time() - start}")
                     for box in boxes:
                         flag, points = self.get_keypoints(frame[box[1]:box[3], box[0]:box[2]])
+                        print(f"keypoint: {time() - start}")
                         if flag:
                             points[:, 0] += box[0]
                             points[:, 1] += box[1]
                             for p in points:
-                                p = p[:2].astype(np.int32)
-                                cv2.circle(display, p, 4, (0, 255, 255), 3)
-                                display = drawViewpoint(display, self.principal_point * scale,
-                                                        self.vp_1 * scale,
-                                                        self.vp_2 * scale, self.vp_3 * scale)
+                                # p = p[:2].astype(np.int32)
+                                # cv2.circle(display, p, 4, (0, 255, 255), 3)
+                                display = drawViewpoint(display, p, self.vp_1 * scale, self.vp_2 * scale,
+                                                        self.vp_3 * scale)
                 # center_x = (box[0] + box[2]) / 2
                 # center_y = (box[1] + box[3]) / 2
                 #
@@ -190,45 +184,34 @@ class Calibration(object):
 
                 print(f"fps:{(1 / (time() - start)):.3f}")
                 cv2.imshow('detect', display)
-                self.frame_count += 1
+                # self.frame_count += 1
 
                 if cv2.waitKey(1) & 0xFF == 27:
+                    cv2.imwrite('test.jpg', frame)
+                    self.yolo.release()
                     self.camera.release()
                     cv2.destroyAllWindows()
                     break
 
-    def load_ssd_model(self, class_json):
-        assert os.path.exists(class_json), "file '{}' dose not exist.".format(class_json)
-        json_file = open(class_json, 'r')
-        class_dict = json.load(json_file)
-        self.category_index = {v: k for k, v in class_dict.items()}
-        self.detectModel = load_model(self.device)
-        self.data_transform = get_data_transform()
+    def load_yolo_model(self, engine_file, class_json):
+        self.yolo = YoloTensorrt(engine_file, class_json)
 
     def detect_car(self, frame, threshold=0.5):
-        image_RBG = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        original_img = Image.fromarray(image_RBG)  # 网络输入为rgb顺序
-        img, _ = self.data_transform(original_img)
-        # expand batch dimension
-        img = torch.unsqueeze(img, dim=0)
-        with torch.no_grad():
-            # time_start = time_synchronized()
-            predictions = self.detectModel(img.to(self.device))[0]  # bboxes_out, labels_out, scores_out
-            # time_end = time_synchronized()
-            # print("inference+NMS time: {}".format(time_end - time_start))
-            predict_boxes = predictions[0].to("cpu").numpy()
-            predict_boxes[:, [0, 2]] = predict_boxes[:, [0, 2]] * original_img.size[0]
-            predict_boxes[:, [1, 3]] = predict_boxes[:, [1, 3]] * original_img.size[1]
-            predict_classes = predictions[1].to("cpu").numpy()
-            predict_scores = predictions[2].to("cpu").numpy()
-            if len(predict_boxes) == 0:
-                print("没有检测到任何目标!")
-            filter_boxes = predict_boxes[predict_scores > threshold].astype(int)
-            classes_str = [self.category_index[i] for i in predict_classes[predict_scores > threshold]]
-        return filter_boxes, classes_str
+        self.yolo.reload_images(frame)
+        [classes], [boxes] = self.yolo.infer()
+        # filter cars
+        index = [True if c in ['car', 'bus', 'truck', ] else False for c in classes]
+        cars_boxes = boxes[index]
+
+        return cars_boxes
 
     def load_keypoint_model(self, ):
         self.perdictor = Predictor(checkpoint="shufflenetv2k16-apollo-24")
+
+        # warmup
+        img = np.ones((640, 640))
+        pil_img = Image.fromarray(img)
+        self.perdictor.pil_image(pil_img)
 
     def get_keypoints(self, image):
         img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -239,7 +222,6 @@ class Calibration(object):
             index = np.where(data[:, -1] > 0)[0]
             pair_flag, pair_keypoints = get_pair_keypoints(index)
             if pair_flag:
-                print(pair_keypoints)
                 return pair_flag, data[pair_keypoints[0]]
             else:
                 return pair_flag, None
@@ -293,15 +275,6 @@ class Calibration(object):
                 cv2.waitKey(0)
                 cv2.destroyWindow('frame')
                 return frame
-        return points
-
-    def detect_lines(self, frame):
-
-        img_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        img_filter = cv2.medianBlur(img_gray, 7)
-        sobel = cv2.Sobel(img_filter, -1, 0, 1)
-        _, res = cv2.threshold(sobel, 0, 255, cv2.THRESH_OTSU)
-        points = cv2.HoughLinesP(res, **hough_lines_parameters)
         return points
 
     def get_vp1(self, visualize=False):
@@ -409,7 +382,7 @@ class Calibration(object):
             self.p_matrix = calibration.get('p_matrix')
             self.r_matrix = calibration.get('r_matrix')
         except:
-
+            print('failed to load calibration')
             return "Error"
 
     def scale_calibration(self, scale):

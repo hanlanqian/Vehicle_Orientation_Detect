@@ -16,17 +16,17 @@ def start_end_line(points):
     return lines
 
 
-def draw_points(frame, points):
+def draw_points(frame, points, visualize=True, color=(0, 255, 255)):
     for p in points:
         x, y = p
         if x < 0 or y < 0:
-            # print('skip')
             continue
         else:
-            cv2.circle(frame, (int(x), int(y)), 2, (0, 255, 255), 2)
-    cv2.imshow('line', frame)
-    if cv2.waitKey(0) & 0xff == 27:
-        cv2.destroyAllWindows()
+            cv2.circle(frame, (int(x), int(y)), 2, color, 2)
+    if visualize:
+        cv2.imshow('line', frame)
+        if cv2.waitKey(0) & 0xff == 27:
+            cv2.destroyWindow('line')
     return frame
 
 
@@ -83,9 +83,9 @@ def origin_to_diamond(point):
     return [-1, -x, np.sign(x * y) * x + y + np.sign(y)]
 
 
-def diamond_to_origin(point):
-    x, y, w = point
-    return [y, np.sign(x) * x + np.sign(y) * y - 1, x]
+def check_int_type(point):
+    res = point.astype(np.int32)[:2]
+    return res
 
 
 def getFocal(vp1, vp2, pp):
@@ -127,12 +127,17 @@ def getViewpointFromCalibration(p, principal_point, focal, rotation):
 
 
 def drawViewpoint(img, p, vp1, vp2, vp3, scale=30):
+
     direction1 = vp1 - p
     direction1 /= 1 / scale * np.linalg.norm(direction1)
     direction2 = vp2 - p
     direction2 /= 1 / scale * np.linalg.norm(direction2)
     direction3 = vp3 - p
     direction3 /= 1 / scale * np.linalg.norm(direction3)
+    p = check_int_type(p)
+    direction1 = check_int_type(direction1)
+    direction2 = check_int_type(direction2)
+    direction3 = check_int_type(direction3)
     cv2.line(img, p, (p + direction1).astype(np.int32), (0, 255, 0), 2)
     cv2.line(img, p, (p + direction2).astype(np.int32), (255, 0, 0), 2)
     cv2.line(img, p, (p + direction3).astype(np.int32), (0, 0, 255), 2)

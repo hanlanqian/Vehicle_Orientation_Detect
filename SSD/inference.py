@@ -5,7 +5,7 @@ import numpy as np
 import transforms
 from models import SSD300, Backbone
 from PIL import Image
-
+from torch2trt import torch2trt
 
 def load_model(device, num_classes=20 + 1, checkpoint="../SSD/save_weights/ssd300-14.pth"):
     """
@@ -23,12 +23,14 @@ def load_model(device, num_classes=20 + 1, checkpoint="../SSD/save_weights/ssd30
     model.load_state_dict(train_weights_dict)
     model.to(device)
     model.eval()
-    with torch.no_grad():
-        # initial model
-        init_img = torch.zeros((1, 3, 300, 300), device=device)
-        model(init_img)
-
-    return model
+    x = torch.ones((1, 3, 300, 300)).cuda()
+    model_trt = torch2trt(model, [x])
+    # with torch.no_grad():
+    #     # initial model
+    #     init_img = torch.zeros((1, 3, 300, 300), device=device)
+    #     model(init_img)
+    #
+    return model_trt
 
 
 def inference(model, tf, images_batches, category_index, threshold=0.5, device='cpu'):

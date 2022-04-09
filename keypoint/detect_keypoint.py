@@ -33,7 +33,7 @@ while True:
     filter_boxes, classes_str = inference(model, transfrom, imgs, category_index, device=device)
     print(len(filter_boxes))
     count = 0
-    correct = 0
+    predicted = 0
     for box in filter_boxes:
         count += 1
         start = time()
@@ -43,7 +43,7 @@ while True:
         predictions, _, _ = predictor.pil_image(carimg)
         # print(f"prediction time is {time() - start}")
         if predictions:
-            correct += 1
+            predicted += 1
             data = np.vstack(predictions[0].data)
             index = np.where(data[:, -1] > 0)[0]
             keypoint = [key for i, key in enumerate(predictions[0].keypoints) if i in index]
@@ -55,7 +55,7 @@ while True:
                 # cv2.putText(img, str(key), (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                 #             (255, 255, 0), 2)
         # print(f"time is {time()-start}")
-        l.append(correct / count)
+        l.append(predicted / count)
 
     cv2.imshow('test', display)
     if cv2.waitKey(1) & 0xff == 27:

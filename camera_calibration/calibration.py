@@ -9,7 +9,7 @@ if __name__ == '__main__':
     # video_path = '../1-2-981_Trim.mp4'
     # video_path = r"E:\datasets\surveilliance\v6.avi"
     video_path = r"E:\datasets\0330数据集\o1.mp4"
-    # video_path = '../sherbrooke_video.avi'
+    # video_path = '../sherbrooked_video.avi'
     # video_path = '../rouen_video.avi'
     cameraTrack = Calibration(video_path)
     RunFlag = False
@@ -26,4 +26,5 @@ if __name__ == '__main__':
     else:
         cameraTrack.load_calibration('./pics/calibrations.npy')
         cameraTrack.load_ssd_model(json_path)
-        cameraTrack.detect_orientation()
+        cameraTrack.load_keypoint_model()
+        cameraTrack.detect_orientation(0.5)
