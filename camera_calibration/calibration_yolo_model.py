@@ -1,17 +1,17 @@
+import math
 import cv2
 import os
 import torch
-import json
 import pickle
 import numpy as np
 import matplotlib.pylab as plt
 
-from PIL import Image
-from camera_calibration.vpd_utils import cvt_diamond_space, start_end_line, draw_point_line, draw_points, \
-    computeCameraCalibration, get_intersections, getViewpoint, getViewpointFromCalibration, drawViewpoint, draw_lines
-from utils import get_pair_keypoints
+from camera_calibration.calibration_utils import cvt_diamond_space, start_end_line, draw_point_line, \
+    computeCameraCalibration
+from utils import get_pair_keypoints, scale_image
 from camera_calibration.edgelets import neighborhood, accumulate_orientation
 from camera_calibration.diamondSpace import DiamondSpace
+from IPM.utils import convertToBirdView
 from yolov5.model import YoloTensorrt
 from openpifpaf.predictor import Predictor
 from time import time
@@ -51,9 +51,9 @@ class Calibration_Yolo(object):
         self.principal_point = None
 
         # calibration
-        self.frame_height = self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)
-        self.frame_width = self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        self.scale = 1
+        self.frame_width = self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.frame_height = self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        self.scale = scale_image((self.frame_height, self.frame_width), (900, 1600))
         # DiamondSpace
         self.DiamondSpace = None
 
@@ -68,9 +68,9 @@ class Calibration_Yolo(object):
                 print('no frame grabbed!')
                 break
 
-            if self.frame_width * self.frame_height > 1e6:
-                frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
-                self.scale = 0.5
+            if self.scale != 1:
+                frame = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_LINEAR)
+
             if self.frame_count == 0:
                 self.init_frame = frame
                 self.principal_point = np.array([self.frame_height * self.scale / 2, self.frame_width * self.scale / 2])
@@ -102,43 +102,37 @@ class Calibration_Yolo(object):
                             if self.get_track_length(fp) > 30:
                                 temp = fp.copy()
                                 self.tracks.append(temp)
-                    # new_tracks.append(fp)
-                # cv2.polylines(frame, [np.int32(tr) for tr in new_tracks], False, (0, 255, 0))
 
             if self.frame_count % self.detectInterval == 0:
                 mask = np.zeros_like(self.current_frame)
-                boxes, classes_str = self.detect_car(frame)
+                boxes = self.detect_car(frame)
                 if len(boxes) > 0:
-                    for box, box_class in zip(boxes, classes_str):
-                        if box_class in ['car', "bus"]:
-                            mask[box[1]:box[3], box[0]:box[2]] = 255
-                            points = self.lines_from_box(frame, box)
-                            if points is not None:
-                                self.edgelets.append(points)
-                            # self.edgelets.append(lines)
-                            # cv2.imshow('line', line_img)
+                    for box in boxes:
+                        mask[box[1]:box[3], box[0]:box[2]] = 255
+                        points = self.lines_from_box(frame, box)
+                        if points is not None:
+                            self.edgelets.append(points)
                     for x, y in [np.int32(tr[-1]) for tr in self.features]:
                         cv2.circle(mask, (x, y), 5, 0, -1)
 
                 # good tracker
                 p = cv2.goodFeaturesToTrack(self.current_frame, mask=mask, **good_features_parameters)
                 if p is not None:
-                    # print(len(p))
                     for x, y in np.float32(p).reshape(-1, 2):
-                        # 特征点测试
-                        # cv2.circle(frame, (int(x), int(y)), radius=5, color=(0, 0, 255), thickness=3)
                         self.features.append([(x, y)])
+                print(f'final_time:{(time() - start):.6f}')
 
             self.frame_count += 1
             self.previous_frame = self.current_frame.copy()
             cv2.imshow('vehicle tracks', frame)
-            # print(f'fps:{1 / (time() - start)}')
-            if cv2.waitKey(1) & 0xFF == 27:
+            print(f'fps:{1 / (time() - start)}')
+            if cv2.waitKey(1) == 27:
+                self.yolo.release()
                 self.camera.release()
                 cv2.destroyAllWindows()
                 break
 
-    def detect_orientation(self, scale=1):
+    def detect_orientation(self):
         self.frame_count = 0
         while True:
             start = time()
@@ -147,47 +141,34 @@ class Calibration_Yolo(object):
                 print('no frame grabbed!')
                 break
             else:
-                if scale:
-                    frame = cv2.resize(frame, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
-                display = frame.copy()
-                # if self.frame_width * self.frame_height > 1e6:
-                #     frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
-                #     self.scale = 0.5
-                if self.frame_count % self.detectInterval == 0:
-                    start = time()
-                    boxes = self.detect_car(frame)
-                    print(f"detect: {time() - start}")
-                    for box in boxes:
-                        flag, points = self.get_keypoints(frame[box[1]:box[3], box[0]:box[2]])
-                        print(f"keypoint: {time() - start}")
-                        if flag:
-                            points[:, 0] += box[0]
-                            points[:, 1] += box[1]
-                            for p in points:
-                                # p = p[:2].astype(np.int32)
-                                # cv2.circle(display, p, 4, (0, 255, 255), 3)
-                                display = drawViewpoint(display, p, self.vp_1 * scale, self.vp_2 * scale,
-                                                        self.vp_3 * scale)
-                # center_x = (box[0] + box[2]) / 2
-                # center_y = (box[1] + box[3]) / 2
-                #
-                # cv2.circle(display, (int(center_x), int(center_y)), 3, (0, 255, 255), 2)
-                # # viewpoint = getViewpoint(np.array([center_x, center_y]), self.vp_1, self.vp_2,
-                # #                          self.principal_point)
-                # viewpoint = getViewpointFromCalibration(np.array([center_x, center_y]), self.principal_point,
-                #                                         self.focal, self.r_matrix)
-                # strings = "(" + ",".join(list(map(lambda u: str(np.round(u, 2)), viewpoint))) + ")"
-                # cv2.putText(display, strings, (int(center_x), int(center_y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                #             (255, 255, 0), 2)
-                # display = drawViewpoint(display, (int(center_x), int(center_y)), self.vp_1[:2], self.vp_2[:2],
-                #                         self.vp_3[:2])
+                if self.scale != 1:
+                    frame = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_LINEAR)
+
+                boxes = self.detect_car(frame)
+                print(f"detect: {time() - start}")
+                for box in boxes:
+                    flag, points = self.get_keypoints(frame[box[1]:box[3], box[0]:box[2]])
+                    print(f"keypoint: {time() - start}")
+                    if flag:
+                        points[:, 0] += box[0]
+                        points[:, 1] += box[1]
+                        pointsW = np.concatenate([points[:, :2], np.ones((len(points), 1))], axis=1)
+                        points_IPM = pointsW @ self.perspective.T
+                        points_IPM = points_IPM / points_IPM[:, -1].reshape(-1, 1)
+                        diff = points_IPM[0] - points_IPM[1]
+                        orientation = math.degreges(np.arctan(diff[1] / diff[0]))
+                        cv2.putText(frame, "angle:" + str(orientation), box[:2], cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                    (255, 255, 0), 2)
+
+                # warp = cv2.warpPerspective(display, self.perspective, self.targets_shape)
+                # x_scale, y_scale = scale_image(warp.shape, (900, 1600), force=True)
+                # warp = cv2.resize(warp, (-1, -1), fx=x_scale, fy=y_scale)
 
                 print(f"fps:{(1 / (time() - start)):.3f}")
-                cv2.imshow('detect', display)
-                # self.frame_count += 1
+                cv2.imshow('detect', frame)
+                # cv2.imshow('warp', warp)
 
                 if cv2.waitKey(1) & 0xFF == 27:
-                    cv2.imwrite('test.jpg', frame)
                     self.yolo.release()
                     self.camera.release()
                     cv2.destroyAllWindows()
@@ -198,31 +179,34 @@ class Calibration_Yolo(object):
 
     def detect_car(self, frame, threshold=0.5):
         self.yolo.reload_images(frame)
-        [classes], [boxes] = self.yolo.infer()
-        # filter cars
-        index = [True if c in ['car', 'bus', 'truck', ] else False for c in classes]
-        cars_boxes = boxes[index]
-
-        return cars_boxes
+        cls, bs = self.yolo.infer(threshold=threshold)
+        if cls:
+            [classes], [boxes] = cls, bs
+            # filter cars
+            index = [True if c in ['car', 'bus', 'truck', ] else False for c in classes]
+            cars_boxes = boxes[index]
+            return cars_boxes
+        else:
+            return []
 
     def load_keypoint_model(self, ):
         self.perdictor = Predictor(checkpoint="shufflenetv2k16-apollo-24")
 
         # warmup
-        img = np.ones((640, 640))
-        pil_img = Image.fromarray(img)
-        self.perdictor.pil_image(pil_img)
+        img = np.ones((640, 640, 3), dtype=np.uint8)
+        self.perdictor.numpy_image(img)
 
     def get_keypoints(self, image):
         img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        pil_img = Image.fromarray(img)
-        predictions, gt_anns, image_meta = self.perdictor.pil_image(pil_img)
+        predictions, gt_anns, image_meta = self.perdictor.numpy_image(img)
         if predictions:
             data = np.vstack(predictions[0].data)
             index = np.where(data[:, -1] > 0)[0]
-            pair_flag, pair_keypoints = get_pair_keypoints(index)
+            # pair_flag, pair_keypoints = get_pair_keypoints(index, ktype='vertical')
+            pair_flag, pair_keypoints = get_pair_keypoints(index, ktype='horizontal')
             if pair_flag:
                 return pair_flag, data[pair_keypoints[0]]
+                # return pair_flag, data[index]
             else:
                 return pair_flag, None
         else:
@@ -306,12 +290,12 @@ class Calibration_Yolo(object):
             ax[1].plot(vps[0, 0], vps[0, 1], 'ro', markersize=11)
             # ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
 
-            plt.savefig('./pics/first_vp1.jpg')
+            plt.savefig('./camera_calibration/pics/first_vp1.jpg')
 
     def get_vp2(self, visualize=False):
         points = np.vstack(self.edgelets)
         lines = start_end_line(points)
-        index = self.DiamondSpace.filter_lines_from_peak(self.vp_1, lines, 200)
+        index = self.DiamondSpace.filter_lines_from_peak(self.vp_1, lines, min(self.frame_width, self.frame_height) / 2)
         vps, values, vpd_s = self.DiamondSpace.find_peaks(t=0.9, )
         # vps中权重最大的一个点取为第二消失点
         self.vp_2 = vps[0][:2]
@@ -322,8 +306,8 @@ class Calibration_Yolo(object):
             scale = self.DiamondSpace.scale
             edgelets = draw_point_line(self.init_frame, points, visualFlag=False)
             edgelets_filter = draw_point_line(self.init_frame, points[index], visualFlag=False)
-            cv2.imwrite('./pics/edgelets.jpg', edgelets)
-            cv2.imwrite('./pics/edgelets_filter.jpg', edgelets_filter)
+            cv2.imwrite('./camera_calibration/pics/edgelets.jpg', edgelets)
+            cv2.imwrite('./camera_calibration/pics/edgelets_filter.jpg', edgelets_filter)
             # 第一消失点可视化
             _, ax = plt.subplots(1, 2, figsize=(20, 10))
             ax[0].imshow(self.DiamondSpace.attach_spaces(), cmap="Greys", extent=(
@@ -341,21 +325,17 @@ class Calibration_Yolo(object):
             ax[1].plot(vps[0, 0], vps[0, 1], 'ro', markersize=11)
             # ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
             # ax[1].plot()
-
-            plt.savefig('./pics/first_vp2.jpg')
-        # cv2.imshow('test', test_img)
-        # cv2.waitKey(0)
-        return
+            plt.savefig('./camera_calibration/pics/first_vp2.jpg')
 
     def save_calibration(self, visualize=False):
-        vp1, vp2, vp3, pp, roadPlane, focal, p_matrix, r_matrix = computeCameraCalibration(self.vp_1 / self.scale,
-                                                                                           self.vp_2 / self.scale,
-                                                                                           self.principal_point / self.scale)
+        vp1, vp2, vp3, pp, roadPlane, focal, intrinsic_matrix, rotation_matrix = computeCameraCalibration(
+            self.vp_1 / self.scale,
+            self.vp_2 / self.scale,
+            self.principal_point / self.scale)
 
         calibration = dict(vp1=vp1, vp2=vp2, vp3=vp3, principal_point=pp,
-                           roadPlane=roadPlane, focal=focal, p_matrix=p_matrix, r_matrix=r_matrix)
-        with open('./pics/calibrations.npy', 'wb') as f:
-            # json.dump(calibration, f)
+                           roadPlane=roadPlane, focal=focal, intrinsic=intrinsic_matrix, rotation=rotation_matrix)
+        with open('./camera_calibration/pics/calibrations.npy', 'wb') as f:
             np.save(f, calibration)
 
         if visualize:
@@ -365,7 +345,7 @@ class Calibration_Yolo(object):
             plt.plot(vp1[0], vp1[1], 'ro', markersize=11)
             plt.plot(vp2[0], vp2[1], 'ro', markersize=11)
             plt.plot(vp3[0], vp3[1], 'ro', markersize=11)
-            plt.savefig("./pics/all_vps.jpg")
+            plt.savefig("./camera_calibration/pics/all_vps.jpg")
         return calibration
 
     def load_calibration(self, path):
@@ -379,12 +359,10 @@ class Calibration_Yolo(object):
             self.principal_point = calibration.get('principal_point')
             self.focal = calibration.get('focal')
             self.roadPlane = calibration.get('roadPlane')
-            self.p_matrix = calibration.get('p_matrix')
-            self.r_matrix = calibration.get('r_matrix')
+            self.intrinsic = calibration.get('intrinsic')
+            self.rotation = calibration.get('rotation')
+            self.perspective = convertToBirdView(self.intrinsic, self.rotation, (self.frame_width, self.frame_height),
+                                                 target_shape=(self.frame_width, self.frame_height))
         except:
             print('failed to load calibration')
             return "Error"
-
-    def scale_calibration(self, scale):
-        #     self.
-        return
