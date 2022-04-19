@@ -1,3 +1,9 @@
+"""
+通过级联霍夫变换求空间内直线的交点
+
+部分代码来自于https://github.com/MarketaJu/diamond_space.git
+"""
+
 import numpy as np
 from skimage.feature import peak_local_max
 from skimage.morphology import erosion, dilation

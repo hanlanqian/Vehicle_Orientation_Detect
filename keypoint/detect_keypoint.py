@@ -57,7 +57,7 @@ while True:
         # print(f"time is {time()-start}")
         l.append(predicted / count)
 
-    cv2.imshow('test', display)
+    cv2.imshow('IPM', display)
     if cv2.waitKey(1) & 0xff == 27:
         l = np.vstack(l)
 

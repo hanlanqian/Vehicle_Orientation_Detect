@@ -14,7 +14,7 @@ cv2.imwrite('test_output.jpg', output)
 #
 # cap.set(0, 3)
 # flag, frame = cap.read()
-# cv2.imwrite('test.jpg', frame)
+# cv2.imwrite('IPM.jpg', frame)
 
 # cv2.waitKey(0)
 # cv2.destroyAllWindows()

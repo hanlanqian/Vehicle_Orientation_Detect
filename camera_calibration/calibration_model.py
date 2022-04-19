@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pylab as plt
 
 from PIL import Image
-from vpd_utils import cvt_diamond_space, start_end_line, draw_point_line, draw_points, computeCameraCalibration, \
+from calibration_utils import cvt_diamond_space, start_end_line, draw_point_line, draw_points, computeCameraCalibration, \
     get_intersections, getViewpoint, getViewpointFromCalibration, drawViewpoint, draw_lines
 from utils import get_pair_keypoints
 from edgelets import neighborhood, accumulate_orientation
@@ -24,9 +24,9 @@ hough_lines_parameters = dict(rho=1.0, theta=np.pi / 180, threshold=100, minLine
 
 
 def display(frame):
-    cv2.imshow('test', frame)
+    cv2.imshow('IPM', frame)
     cv2.waitKey(0)
-    cv2.destroyWindow('test')
+    cv2.destroyWindow('IPM')
 
 
 class Calibration(object):
@@ -279,7 +279,7 @@ class Calibration(object):
         res = cv2.addWeighted(accumulation, 0.8, edges, 0.2, 0)
         # _, res = cv2.threshold(res, np.percentile(res[res!=0], 100 * (1 - threshold)), 255, cv2.THRESH_BINARY)
         # thres, edges = cv2.threshold(quality, 0, 255, cv2.THRESH_OTSU)
-        # lines = get_lines(edges, orientation, box)
+        # lines = get_lines(edges, IPM, box)
         points = cv2.HoughLinesP(res, 1.0, np.pi / 180, 30, minLineLength=30, maxLineGap=20)
         if points is not None:
             points = points.reshape(-1, 4)
@@ -370,7 +370,7 @@ class Calibration(object):
             # ax[1].plot()
 
             plt.savefig('./pics/first_vp2.jpg')
-        # cv2.imshow('test', test_img)
+        # cv2.imshow('IPM', test_img)
         # cv2.waitKey(0)
         return
 

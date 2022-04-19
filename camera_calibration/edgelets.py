@@ -1,6 +1,8 @@
+"""
+检测车辆横向边缘
+"""
 import cv2
 import numpy as np
-from time import time
 import matplotlib.pyplot as plt
 from camera_calibration.diamondSpace import DiamondSpace
 
@@ -79,7 +81,7 @@ def get_lines(edges, orientation, box=None):
             a = dy
             b = -dx
             c = (j + box[1]) * dx - dy * (i + box[0])
-            # k = orientation[j, i][1] / orientation[j, i][0]
+            # k = IPM[j, i][1] / IPM[j, i][0]
             # b = read_y - k * real_x
             lines.append([a, b, c])
     else:
@@ -87,8 +89,8 @@ def get_lines(edges, orientation, box=None):
             k = orientation[j, i][1] / orientation[j, i][0]
             b = j - k * i
             lines.append([k, -1, b])
-            # start = np.round(index + 5 * orientation[j, i]).astype(np.int32)
-            # end = np.round(index - 5 * orientation[j, i]).astype(np.int32)
+            # start = np.round(index + 5 * IPM[j, i]).astype(np.int32)
+            # end = np.round(index - 5 * IPM[j, i]).astype(np.int32)
             # cv2.line(img, start, end, (0, 0, 255), 1)
     return np.vstack(lines)
 

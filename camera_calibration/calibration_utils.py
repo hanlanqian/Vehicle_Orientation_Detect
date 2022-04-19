@@ -16,25 +16,45 @@ def start_end_line(points):
     return lines
 
 
-def draw_points(frame, points, visualize=True, color=(0, 255, 255)):
-    for p in points:
-        x, y = p
-        if x < 0 or y < 0:
-            continue
-        else:
-            cv2.circle(frame, (int(x), int(y)), 2, color, 2)
-    if visualize:
-        cv2.imshow('line', frame)
-        if cv2.waitKey(0) & 0xff == 27:
-            cv2.destroyWindow('line')
-    return frame
+def draw_points(frame, points, visualize=True, **kwargs):
+    channels = frame.shape[-1]
+    if channels == 3:
+        color = kwargs.get('color', (255, 255, 0))
+    elif channels == 1:
+        color = kwargs.get('color', 255, )
+    else:
+        print("Error Channels")
+        return None
+
+    radius = kwargs.get('radius', 3)
+    thickness = kwargs.get('thickness', 2)
+
+    if points is not None:
+        for p in points:
+            if p.size != 2:
+                continue
+            elif p.shape != 2:
+                p = p.reshape(-1)
+            x, y = p
+            if x < 0 or y < 0:
+                continue
+            else:
+                cv2.circle(frame, (int(x), int(y)), radius, color, thickness)
+        if visualize:
+            cv2.imshow('line', frame)
+            if cv2.waitKey(0) & 0xff == 27:
+                cv2.destroyWindow('line')
+        return frame
 
 
-def draw_point_line(frame, points, visualFlag=False):
+def draw_point_line(frame, points, visualFlag=False, **kwargs):
     display = frame.copy()
+    color = kwargs.get('color', (255, 255, 0))
+    thickness = kwargs.get('thickness', 2)
     for p in points:
+        p = p.ravel()
         x1, y1, x2, y2 = p
-        cv2.line(display, (x1, y1), (x2, y2), (255, 255, 0), 2)
+        cv2.line(display, (x1, y1), (x2, y2), color, thickness)
     if visualFlag:
         cv2.imshow('line', display)
         if cv2.waitKey(0) & 0xff == 27:
@@ -70,19 +90,6 @@ def cvt_diamond_space(tracks):
     return np.array(lines)
 
 
-def origin_to_diamond(point):
-    """
-    default:
-        d = 1
-        D = 1
-        w = 1
-    :param point:
-    :return:
-    """
-    x, y = point
-    return [-1, -x, np.sign(x * y) * x + y + np.sign(y)]
-
-
 def check_int_type(point):
     res = point.astype(np.int32)[:2]
     return res
@@ -96,7 +103,8 @@ def getFocal(vp1, vp2, pp):
     :param pp: 相机光心坐标(p_x, p_y, 1)
     :return: focal_length (f_x, f_y)
     """
-    return math.sqrt(- np.dot(vp1[0:2] - pp[0:2], vp2[0:2] - pp[0:2]))
+    return math.sqrt(abs(np.dot(vp1[0:2] - pp[0:2], vp2[0:2] - pp[0:2])))
+    # return math.sqrt(-np.dot(vp1[0:2] - pp[0:2], vp2[0:2] - pp[0:2]))
 
 
 def getViewpoint(p, vp1, vp2, pp):
@@ -105,7 +113,7 @@ def getViewpoint(p, vp1, vp2, pp):
     except ValueError:
         return None
 
-    # variables end with W represent their world coordinate
+    # variables end with W represent their Camera coordinate
     vp1W = np.concatenate((vp1[0:2] - pp[0:2], [focal]))
     vp2W = np.concatenate((vp2[0:2] - pp[0:2], [focal]))
     if vp1[0] < vp2[0]:
@@ -127,7 +135,7 @@ def getViewpointFromCalibration(p, principal_point, focal, rotation):
 
 
 def drawViewpoint(img, p, vp1, vp2, vp3, scale=30):
-
+    # 绘制点p到三个消失点的方向
     direction1 = vp1 - p
     direction1 /= 1 / scale * np.linalg.norm(direction1)
     direction2 = vp2 - p
@@ -145,7 +153,7 @@ def drawViewpoint(img, p, vp1, vp2, vp3, scale=30):
     return img
 
 
-def drawCalibration(img, vp1, vp2, vp3, slices=3, offsetPercent=0.2, scale=30):
+def drawCalibration(img, vp1, vp2, vp3, slices=3, offsetPercent=0.2, scale=30, thickness=2):
     display = img.copy()
     height, width = img.shape[:2]
     heightOffset = height * offsetPercent
@@ -161,27 +169,34 @@ def drawCalibration(img, vp1, vp2, vp3, slices=3, offsetPercent=0.2, scale=30):
             direction2 /= 1 / scale * np.linalg.norm(direction2)
             direction3 = vp3 - p
             direction3 /= 1 / scale * np.linalg.norm(direction3)
-            cv2.line(display, p, (p + direction1).astype(np.int32), (0, 255, 0), 2)
-            cv2.line(display, p, (p + direction2).astype(np.int32), (255, 0, 0), 2)
-            cv2.line(display, p, (p + direction3).astype(np.int32), (0, 0, 255), 2)
+            cv2.line(display, p, (p + direction1).astype(np.int32), (0, 255, 0), thickness)
+            cv2.line(display, p, (p + direction2).astype(np.int32), (255, 0, 0), thickness)
+            cv2.line(display, p, (p + direction3).astype(np.int32), (0, 0, 255), thickness)
 
     return display
 
 
-def get_third_VP(vp1, vp2, f, width, height):
-    Ut = np.array([vp1[0], vp1[1], f])
-    Vt = np.array([vp2[0], vp2[1], f])
-    Pt = np.array([width / 2 - 1, height / 2 - 1, 0])
-    W = np.cross((Ut - Pt), (Vt - Pt))
-    return W
+def draw3dBox(img, keypoints, vp1, vp2, vp3, visualize=False):
+    """
+
+    :param img:
+    :param keypoints:
+    :param vp1:
+    :param vp2:
+    :param vp3:
+    :param visualize:
+    :return:
+    """
+    return img
 
 
 def computeCameraCalibration(_vp1, _vp2, _pp, cameraH=10):
     """
     Compute camera calibration from two van points and principal point. Variables end with W represent their world coordinate
-    :param _vp1 first vanishing point (vp1_x, vp1_y)
-    :param _vp2 first vanishing point (vp2_x, vp2_y)
+    :param _vp1 first vanishing point (vp1_x, vp1_y)      along with the road
+    :param _vp2 first vanishing point (vp2_x, vp2_y)      perpendicular with the first direction
     :param _pp first vanishing point (pp_x, pp_y)
+    :return P the intrinsic matrix
     """
     vp1 = np.concatenate((_vp1, [1]))
     vp2 = np.concatenate((_vp2, [1]))
@@ -192,25 +207,20 @@ def computeCameraCalibration(_vp1, _vp2, _pp, cameraH=10):
     ppW = np.concatenate((_pp, [0]))
     vp1_c = vp1W - ppW
     vp2_c = vp2W - ppW
-    vp3W = np.cross(vp2_c, vp1_c)
+    vp3W = np.cross(vp1_c, vp2_c)
     vp3 = np.concatenate((vp3W[0:2] / vp3W[2] * focal + ppW[0:2], [1]))
     vp3Direction = np.concatenate((vp3[0:2], [focal])) - ppW
     roadPlane = np.concatenate((vp3Direction / np.linalg.norm(vp3Direction), [cameraH]))
-    P = np.array([[focal, 0, _pp[0]],
-                  [0, focal, _pp[1], ],
-                  [0, 0, 1]])
+    # assumptions: 畸变为0, fx, fy相等, 光心位于图像中心
+    intrinsic_matrix = np.array([[focal, 0, _pp[0]],
+                                 [0, focal, _pp[1], ],
+                                 [0, 0, 1]])
 
-    # World Coordinate to Camera Coordinate
-    R = np.stack([vp1_c / np.linalg.norm(vp1_c), vp2_c / np.linalg.norm(vp2_c), vp3W / np.linalg.norm(vp3W)], axis=1)
+    # World Coordinate to Camera Coordinate 这里把沿道路方向设置为主方向y轴
+    rotation_matrix = np.stack(
+        [vp2_c / np.linalg.norm(vp2_c), vp1_c / np.linalg.norm(vp1_c), vp3W / np.linalg.norm(vp3W)], axis=1)
 
-    return vp1, vp2, vp3, pp, roadPlane, focal, P, R
-
-
-def coordinate_transform(p, focal, roadPlane, delta=10):
-    pW = np.concatenate((p, [focal, 0]))
-    pW_t = np.concatenate((p, [focal])).transpose()
-    P = - delta / np.dot(pW, roadPlane) * pW_t
-    return P
+    return vp1, vp2, vp3, pp, roadPlane, focal, intrinsic_matrix, rotation_matrix
 
 
 def get_intersections(points1, points2):
