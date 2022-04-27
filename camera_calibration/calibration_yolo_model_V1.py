@@ -7,12 +7,12 @@ import numpy as np
 import matplotlib.pylab as plt
 
 from camera_calibration.calibration_utils import cvt_diamond_space, start_end_line, draw_point_line, \
-    computeCameraCalibration, draw_points
+    computeCameraCalibration
 from utils import get_pair_keypoints, scale_image
 from camera_calibration.edgelets import neighborhood, accumulate_orientation
 from camera_calibration.diamondSpace import DiamondSpace
 from IPM.utils import convertToBirdView
-from yolov5.model import YoloTensorrt
+from yolov5.last_model import YoloTensorrt
 from openpifpaf.predictor import Predictor
 from time import time
 
@@ -21,18 +21,8 @@ good_features_parameters = dict(maxCorners=100, qualityLevel=0.3, minDistance=7,
 optical_flow_parameters = dict(winSize=(21, 21), minEigThreshold=1e-4)
 
 
-def CLAHE(img, ):
-    b, g, r = cv2.split(img)
-    clahe = cv2.createCLAHE(clipLimit=0.2, tileGridSize=(8, 8))
-    b = clahe.apply(b)
-    g = clahe.apply(g)
-    r = clahe.apply(r)
-    new = cv2.merge([b, g, r])
-    return new
-
-
 class Calibration_Yolo(object):
-    def __init__(self, video_src, input_shape=(900, 1600), roi=None, detect_interval=20, track_interval=10):
+    def __init__(self, video_src, detect_interval=20, track_interval=10):
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.tracks = []  # vehicle tracks
@@ -54,36 +44,21 @@ class Calibration_Yolo(object):
         self.feature_determine_threshold = 0.1
         self.tracks_filter_threshold = 0.005
 
-        # calibration
-        self.frame_width = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.frame_height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.scale = scale_image((self.frame_height, self.frame_width), input_shape, scaleUp=True)
-        # DiamondSpace
-        self.DiamondSpace = None
         # vanish point
         self.vp_1 = []
         self.vp_2 = []
         self.vp_3 = []
         self.principal_point = None
 
-        # preprocess
-        # todo 需要增加roi区域输入
-        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # 均衡化
-        # self.roi = np.zeros()
+        # calibration
+        self.frame_width = self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.frame_height = self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        self.scale = scale_image((self.frame_height, self.frame_width), (900, 1600))
+        # DiamondSpace
+        self.DiamondSpace = None
 
     def run(self):
         self.frame_count = 0
-        _, frame = self.camera.read()
-        # if not self.roi:
-        #
-        if self.scale != 1:
-            frame = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_LINEAR)
-        self.init_frame = frame
-        background = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        background = cv2.medianBlur(background, 3)
-        self.principal_point = np.array([self.frame_height * self.scale / 2, self.frame_width * self.scale / 2])
-        self.DiamondSpace = DiamondSpace(
-            d=min(self.frame_height * self.scale, self.frame_width * self.scale) / 2, size=256)
         while True:
             start = time()
 
@@ -96,9 +71,13 @@ class Calibration_Yolo(object):
             if self.scale != 1:
                 frame = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_LINEAR)
 
+            if self.frame_count == 0:
+                self.init_frame = frame
+                self.principal_point = np.array([self.frame_height * self.scale / 2, self.frame_width * self.scale / 2])
+                self.DiamondSpace = DiamondSpace(
+                    d=min(self.frame_height * self.scale, self.frame_width * self.scale) / 2, size=256)
+
             self.current_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            current_medianBlur = cv2.medianBlur(self.current_frame, 3)
-            background = cv2.addWeighted(current_medianBlur, 0.05, background, 0.95, 0)
 
             if len(self.features) > 0:
                 # KLT Tracker
@@ -130,7 +109,7 @@ class Calibration_Yolo(object):
                 if len(boxes) > 0:
                     for box in boxes:
                         mask[box[1]:box[3], box[0]:box[2]] = 255
-                        points = self.lines_from_box(current_medianBlur, background, box, drawFlag=True)
+                        points = self.lines_from_box(frame, box)
                         if points is not None:
                             self.edgelets.append(points)
                     for x, y in [np.int32(tr[-1]) for tr in self.features]:
@@ -156,15 +135,15 @@ class Calibration_Yolo(object):
     def detect_orientation(self):
         self.frame_count = 0
         while True:
-            flag, original_frame = self.camera.read()
-            frame = original_frame.copy()
+            start = time()
+            flag, frame = self.camera.read()
             if not flag:
                 print('no frame grabbed!')
                 break
             else:
                 if self.scale != 1:
                     frame = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_LINEAR)
-                start = time()
+
                 boxes = self.detect_car(frame)
                 print(f"detect: {time() - start}")
                 for box in boxes:
@@ -173,14 +152,11 @@ class Calibration_Yolo(object):
                     if flag:
                         points[:, 0] += box[0]
                         points[:, 1] += box[1]
-                        frame = draw_points(frame, points[:, :2], visualize=False)
-
-                        points /= self.scale
                         pointsW = np.concatenate([points[:, :2], np.ones((len(points), 1))], axis=1)
                         points_IPM = pointsW @ self.perspective.T
                         points_IPM = points_IPM / points_IPM[:, -1].reshape(-1, 1)
                         diff = points_IPM[0] - points_IPM[1]
-                        orientation = math.degrees(np.arctan(diff[1] / diff[0]))
+                        orientation = math.degreges(np.arctan(diff[1] / diff[0]))
                         cv2.putText(frame, "angle:" + str(orientation), box[:2], cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                                     (255, 255, 0), 2)
 
@@ -193,13 +169,13 @@ class Calibration_Yolo(object):
                 # cv2.imshow('warp', warp)
 
                 if cv2.waitKey(1) & 0xFF == 27:
-                    cv2.imwrite('frame.jpg', original_frame)
+                    self.yolo.release()
                     self.camera.release()
                     cv2.destroyAllWindows()
                     break
 
-    def load_yolo_model(self, engine_file, class_json, verbose=False):
-        self.yolo = YoloTensorrt(engine_file, class_json, verbose=verbose)
+    def load_yolo_model(self, engine_file, class_json):
+        self.yolo = YoloTensorrt(engine_file, class_json)
 
     def detect_car(self, frame, threshold=0.5):
         self.yolo.reload_images(frame)
@@ -261,18 +237,12 @@ class Calibration_Yolo(object):
             with open(os.path.join(save_path, 'tracks.data'), 'wb') as f:
                 pickle.dump(self.tracks, f)
 
-    def lines_from_box(self, current, background, box, drawFlag=False):
-
-        vehicle_current = current[box[1]:box[3], box[0]:box[2]]
-
-        vehicle_background = background[box[1]:box[3], box[0]:box[2]]
-        # vehicle_current_preprocess = self.clahe.apply(vehicle_current)
-        # vehicle_background_preprocess = self.clahe.apply(vehicle_background)
-
-        edges = cv2.Canny(vehicle_current, 255 / 2, 255) - cv2.Canny(vehicle_background, 255 / 2, 255)
+    def lines_from_box(self, frame, box, threshold=0.25, drawFlag=False):
+        vehicle_img = frame[box[1]:box[3], box[0]:box[2]]
+        edges = cv2.Canny(vehicle_img, 200, 200, L2gradient=True)
         orientation, quality = neighborhood(edges)
         accumulation, t = accumulate_orientation(orientation, quality)
-        res = cv2.addWeighted(accumulation, 0.9, edges, 0.1, 0)
+        res = cv2.addWeighted(accumulation, 0.8, edges, 0.2, 0)
         # _, res = cv2.threshold(res, np.percentile(res[res!=0], 100 * (1 - threshold)), 255, cv2.THRESH_BINARY)
         # thres, edges = cv2.threshold(quality, 0, 255, cv2.THRESH_OTSU)
         # lines = get_lines(edges, orientation, box)
@@ -282,25 +252,19 @@ class Calibration_Yolo(object):
             points[:, [0, 2]] += box[0]
             points[:, [1, 3]] += box[1]
             if drawFlag:
-                mask = np.zeros(current.shape)
                 for p in points:
                     x1, y1, x2, y2 = p
-                    cv2.line(mask, (x1, y1), (x2, y2), 255, 2)
-                cv2.imshow('frame', mask)
-                cv2.imshow('car', vehicle_current)
-                cv2.imshow('edges', edges)
+                    cv2.line(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                cv2.imshow('frame', frame)
                 cv2.waitKey(0)
                 cv2.destroyWindow('frame')
-                cv2.destroyWindow('car')
-                cv2.destroyWindow('edges')
+                return frame
         return points
 
-    def get_vp1(self, save_path, visualize=False):
+    def get_vp1(self, visualize=False):
         lines = cvt_diamond_space(self.tracks)
         self.DiamondSpace.insert(lines)
         vps, values, vpd_s = self.DiamondSpace.find_peaks(t=0.9, )
-        if len(vps) <= 0:
-            raise Exception("Fail to detect the first vanishing point.")
         # vps中权重最大的一个点取为第一消失点
         self.vp_1 = vps[0][:2]
 
@@ -326,17 +290,14 @@ class Calibration_Yolo(object):
             ax[1].plot(vps[0, 0], vps[0, 1], 'ro', markersize=11)
             # ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
 
-            plt.savefig(f'{save_path}/new/first_vp1.jpg')
+            plt.savefig('./camera_calibration/avi6/first_vp1.jpg')
 
-    def get_vp2(self, save_path, visualize=False):
+    def get_vp2(self, visualize=False):
         points = np.vstack(self.edgelets)
         lines = start_end_line(points)
-        index = self.DiamondSpace.filter_lines_from_peak(self.vp_1, lines, min(self.frame_width * self.scale,
-                                                                               self.frame_height * self.scale) / 2)
+        index = self.DiamondSpace.filter_lines_from_peak(self.vp_1, lines, min(self.frame_width, self.frame_height) / 2)
         vps, values, vpd_s = self.DiamondSpace.find_peaks(t=0.9, )
         # vps中权重最大的一个点取为第二消失点
-        if len(vps) <= 0:
-            raise Exception("Fail to detect the second vanishing point.")
         self.vp_2 = vps[0][:2]
         if visualize:
             img = cv2.cvtColor(self.init_frame, cv2.COLOR_BGR2RGB)
@@ -345,8 +306,8 @@ class Calibration_Yolo(object):
             scale = self.DiamondSpace.scale
             edgelets = draw_point_line(self.init_frame, points, visualFlag=False)
             edgelets_filter = draw_point_line(self.init_frame, points[index], visualFlag=False)
-            cv2.imwrite(f'{save_path}/new/edgelets.jpg', edgelets)
-            cv2.imwrite(f'{save_path}/new/edgelets_filter.jpg', edgelets_filter)
+            cv2.imwrite('./camera_calibration/avi6/edgelets.jpg', edgelets)
+            cv2.imwrite('./camera_calibration/avi6/edgelets_filter.jpg', edgelets_filter)
             # 第一消失点可视化
             _, ax = plt.subplots(1, 2, figsize=(20, 10))
             ax[0].imshow(self.DiamondSpace.attach_spaces(), cmap="Greys", extent=(
@@ -364,9 +325,9 @@ class Calibration_Yolo(object):
             ax[1].plot(vps[0, 0], vps[0, 1], 'ro', markersize=11)
             # ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
             # ax[1].plot()
-            plt.savefig(f'{save_path}/new/first_vp2.jpg')
+            plt.savefig('./camera_calibration/avi6/first_vp2.jpg')
 
-    def save_calibration(self, save_path, visualize=False):
+    def save_calibration(self, visualize=False):
         vp1, vp2, vp3, pp, roadPlane, focal, intrinsic_matrix, rotation_matrix = computeCameraCalibration(
             self.vp_1 / self.scale,
             self.vp_2 / self.scale,
@@ -374,7 +335,7 @@ class Calibration_Yolo(object):
 
         calibration = dict(vp1=vp1, vp2=vp2, vp3=vp3, principal_point=pp,
                            roadPlane=roadPlane, focal=focal, intrinsic=intrinsic_matrix, rotation=rotation_matrix)
-        with open(f'{save_path}/new/calibrations.npy', 'wb') as f:
+        with open('./camera_calibration/avi6/calibrations.npy', 'wb') as f:
             np.save(f, calibration)
 
         if visualize:
@@ -384,17 +345,10 @@ class Calibration_Yolo(object):
             plt.plot(vp1[0], vp1[1], 'ro', markersize=11)
             plt.plot(vp2[0], vp2[1], 'ro', markersize=11)
             plt.plot(vp3[0], vp3[1], 'ro', markersize=11)
-            plt.savefig(f'{save_path}/new/all_vps.jpg')
+            plt.savefig("./camera_calibration/avi6/all_vps.jpg")
         return calibration
 
-    def calibrate(self, save_path, visualize=False, ):
-        if not os.path.exists(os.path.join(save_path, 'new')):
-            os.makedirs(os.path.join(save_path, 'new'), )
-        self.get_vp1(save_path, visualize)
-        self.get_vp2(save_path, visualize)
-        self.save_calibration(save_path, visualize)
-
-    def load_calibration(self, path, dst_shape=(1600, 900), strict=False):
+    def load_calibration(self, path):
         try:
             with open(path, 'rb') as f:
                 calibration = np.load(f, allow_pickle=True).tolist()
@@ -407,10 +361,8 @@ class Calibration_Yolo(object):
             self.roadPlane = calibration.get('roadPlane')
             self.intrinsic = calibration.get('intrinsic')
             self.rotation = calibration.get('rotation')
-            target_shape = dst_shape if dst_shape[0] * dst_shape[1] > self.frame_width * self.frame_height else (
-                self.frame_width, self.frame_height)
             self.perspective = convertToBirdView(self.intrinsic, self.rotation, (self.frame_width, self.frame_height),
-                                                 target_shape=target_shape, strict=strict)
-        except Exception as e:
+                                                 target_shape=(self.frame_width, self.frame_height))
+        except:
             print('failed to load calibration')
-            raise e
+            return "Error"

@@ -79,7 +79,7 @@ def get_scaled_matrix(H, target_shape, estimated_xrange, estimated_yrange, stric
     return scaled_H
 
 
-def modified_matrices_calculate_range_output_without_translation(height, width, overhead_hmatrix,
+def modified_matrices_calculate_range_output_without_translation(height, width, overhead_hmatrix, opt=False,
                                                                  verbose=False):
     """
     调整透视矩阵对应变换后的图像大小
@@ -141,6 +141,45 @@ def modified_matrices_calculate_range_output_without_translation(height, width, 
 
     range_u = np.array(range_u, dtype=np.int)
     range_v = np.array(range_v, dtype=np.int)
+
+    if out_upperpixel > out_lowerpixel and opt:
+
+        # range_v needs to be updated
+        max_height = range_v[1]
+        upper_range = out_lowerpixel
+        best_lower = upper_range  # since out_lowerpixel was lower value than out_upperpixel
+        #                           i.e. above in image than out_lowerpixel
+        x_best_lower = np.inf
+        x_best_upper = -np.inf
+
+        for steps_h in range(2, height):
+            temp = np.dot(overhead_hmatrix, np.vstack(
+                (np.arange(0, width), np.ones((1, width)) * (height - steps_h), np.ones((1, width)))))
+            temp = temp / temp[2, :]
+
+            lower_range = temp.min(axis=1)[1]
+            x_lower_range = temp.min(axis=1)[0]
+            x_upper_range = temp.max(axis=1)[0]
+            if x_lower_range < x_best_lower:
+                x_best_lower = x_lower_range
+            if x_upper_range > x_best_upper:
+                x_best_upper = x_upper_range
+
+            if (upper_range - lower_range) > max_height:  # enforcing max_height of destination image
+                lower_range = upper_range - max_height
+                break
+            if lower_range > upper_range:
+                lower_range = best_lower
+                break
+            if lower_range < best_lower:
+                best_lower = lower_range
+            if verbose:
+                print(steps_h, lower_range, x_best_lower, x_best_upper)
+        range_v = np.array([lower_range, upper_range], dtype=np.int)
+
+        # for testing
+        range_u = np.array([x_best_lower, x_best_upper], dtype=np.int)
+
     return range_u, range_v
 
 
@@ -158,7 +197,10 @@ def convertToBirdView(intrinsic, rotation, shape, target_shape, strict=False, ve
     perspective_matrix = intrinsic @ rotation.T @ np.linalg.inv(intrinsic)
     est_range_u, est_range_v = modified_matrices_calculate_range_output_without_translation(shape[1], shape[0],
                                                                                             perspective_matrix,
+                                                                                            opt=True,
                                                                                             verbose=verbose)
+    # est_range_u *= 5
+    # est_range_v *= 5
     moveup_camera = np.array([[1, 0, -est_range_u[0]], [0, 1, -est_range_v[0]], [0, 0, 1]])
     perspective_matrix = np.dot(moveup_camera, perspective_matrix)
     scale_matrix = get_scaled_matrix(perspective_matrix, target_shape, est_range_u, est_range_v, strict=strict)

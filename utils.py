@@ -52,6 +52,14 @@ def get_pair_keypoints_v1(index):
 
 
 def scale_image(shape, dst_shape, scaleUp=False, force=False):
+    """
+
+    :param shape: (height, width)
+    :param dst_shape: (height, width)
+    :param scaleUp:
+    :param force:
+    :return:
+    """
     x_scale = dst_shape[1] / shape[1]
     y_scale = dst_shape[0] / shape[0]
     if not force:

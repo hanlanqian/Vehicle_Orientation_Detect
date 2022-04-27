@@ -42,9 +42,11 @@ def neighborhood(grad, winSize=9):
 
 
 def accumulate_orientation(orientations, quality, threshold=0.25):
+    if (quality == 0).all():
+        print(quality)
     mask = np.zeros_like(quality)
     thres = np.percentile(quality[quality != 0], 100 * (1 - threshold))
-    y_index, x_index = np.where(quality > thres)
+    y_index, x_index = np.where(quality >= thres)
     height, width = mask.shape[:2]
     for i, j in zip(y_index, x_index):
         dx, dy = orientations[i, j]
@@ -61,12 +63,12 @@ def accumulate_orientation(orientations, quality, threshold=0.25):
     return mask, thres
 
 
-def calculate(X, ):
+def calculate(X):
     u, s, v = np.linalg.svd(X.T @ X)
     W = v
     sigma = s.transpose() * s
     orientation = W[:, 0]
-    quality = sigma[0] / sigma[1] if sigma[1] != 0 else 0
+    quality = sigma[0] / sigma[1] if sigma[1] != 0 else 255
     return orientation, quality
 
 

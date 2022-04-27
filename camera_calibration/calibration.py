@@ -24,7 +24,7 @@ if __name__ == '__main__':
         # print(cameraTrack.vp_2)
         cameraTrack.save_calibration(visualize=visualizeFlag)
     else:
-        cameraTrack.load_calibration('./pics/calibrations.npy')
+        cameraTrack.load_calibration('./avi6/calibrations.npy')
         cameraTrack.load_ssd_model(json_path)
         cameraTrack.load_keypoint_model()
         cameraTrack.detect_orientation(0.5)

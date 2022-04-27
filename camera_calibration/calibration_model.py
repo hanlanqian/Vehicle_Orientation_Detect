@@ -30,7 +30,7 @@ def display(frame):
 
 
 class Calibration(object):
-    def __init__(self, video_src, detect_interval=20, track_interval=10):
+    def __init__(self, video_src, roi=None, detect_interval=20, track_interval=10):
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.tracks = []  # vehicle tracks
@@ -52,18 +52,17 @@ class Calibration(object):
         self.feature_determine_threshold = 0.1
         self.tracks_filter_threshold = 0.005
 
-        # vanish point
-        self.vp_1 = []
-        self.vp_2 = []
-        self.vp_3 = []
-        self.principal_point = None
-
         # calibration
         self.frame_height = self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)
         self.frame_width = self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
         self.scale = 1
         # DiamondSpace
         self.DiamondSpace = None
+        # vanish point
+        self.vp_1 = []
+        self.vp_2 = []
+        self.vp_3 = []
+        self.principal_point = None
 
     def run(self):
         self.frame_count = 0
@@ -333,7 +332,7 @@ class Calibration(object):
             ax[1].plot(vps[0, 0], vps[0, 1], 'ro', markersize=11)
             # ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
 
-            plt.savefig('./pics/first_vp1.jpg')
+            plt.savefig('./avi6/first_vp1.jpg')
 
     def get_vp2(self, visualize=False):
         points = np.vstack(self.edgelets)
@@ -369,7 +368,7 @@ class Calibration(object):
             # ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
             # ax[1].plot()
 
-            plt.savefig('./pics/first_vp2.jpg')
+            plt.savefig('./avi6/first_vp2.jpg')
         # cv2.imshow('IPM', test_img)
         # cv2.waitKey(0)
         return
@@ -392,7 +391,7 @@ class Calibration(object):
             plt.plot(vp1[0], vp1[1], 'ro', markersize=11)
             plt.plot(vp2[0], vp2[1], 'ro', markersize=11)
             plt.plot(vp3[0], vp3[1], 'ro', markersize=11)
-            plt.savefig("./pics/all_vps.jpg")
+            plt.savefig("./avi6/all_vps.jpg")
         return calibration
 
     def load_calibration(self, path):
