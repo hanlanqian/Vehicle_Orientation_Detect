@@ -39,17 +39,15 @@ def scale_image(shape, dst_shape, scaleUp=False, force=False):
 
 
 if __name__ == '__main__':
-
-    outputFlag = False
     path = r"E:\datasets\0330数据集\o1.mp4"
     # path = r"E:\datasets\0330数据集\o2.mp4"
     # path = r"E:\datasets\surveilliance\v6.avi"
 
     camera = cv2.VideoCapture(path)
 
-    calibration_path = '../results/new/calibrations.npy'
+    # calibration_path = '../results/new/calibrations.npy'
     # calibration_path = '../results/avi6/calibrations.npy'
-    # calibration_path = '../results/video1/calibrations.npy'
+    calibration_path = '../results/video1/calibrations.npy'
     with open(calibration_path, 'rb') as f:
         calibration = np.load(f, allow_pickle=True).tolist()
 
@@ -65,7 +63,7 @@ if __name__ == '__main__':
     ############################
     strict = False
     # target_shape = (width, height)
-    target_shape = (1600, 1700)
+    target_shape = (1600, 1600)
     # target_shape = (1600, 900)
 
     ## video1
@@ -76,6 +74,13 @@ if __name__ == '__main__':
     # overhead_hmatrix = np.array([[-4.39995719e+00, - 5.14711974e+00, 8.66393080e+03],
     #                              [-6.93979612e-01, - 1.68290056e+01, 1.37317746e+04],
     #                              [-4.22788632e-04, - 3.27005650e-03, 1.00000000e+00]])
+    # overhead_hmatrix = np.array([[-9.37738247e+01, - 1.14358323e+02, 1.89173825e+05],
+    #                              [-1.47522236e+01, - 3.90933926e+02, 3.19164358e+05],
+    #                              [1.53271919e-03, - 4.99285260e-02, 1.00000000e+00]])
+    # overhead_hmatrix = np.array([[-1.45211933e+00, - 1.96693620e+00, 2.94800089e+03],
+    #                              [-1.10548246e-01, - 2.32151317e+00, 1.29728367e+03],
+    #                              [-2.44915563e-04, - 3.60979304e-03, 1.00000000e+00]])
+    ## video3
     # overhead_hmatrix = np.array([[-6.13831606e+00, - 7.63141996e+00, 1.25941655e+04],
     #                              [-1.04311421e+00, - 2.53824458e+01, 2.09269573e+04],
     #                              [-2.75777412e-04, - 3.60123953e-03, 1.00000000e+00]])
@@ -89,14 +94,13 @@ if __name__ == '__main__':
                                                  strict=strict)
     scaled_overhead_hmatrix2 = convertToBirdView(K, rotation, (width, height), target_shape, strict)
 
-
-
     my = scaled_overhead_hmatrix2 / scaled_overhead_hmatrix2[-1, -1]
     diff = (my - scaled_overhead_hmatrix1) / scaled_overhead_hmatrix1
     error = np.average(np.power(diff, 2))
     print(error)
 
-    path = '../test/imgs/calibration.jpg'
+    # path = '../test/imgs/o1.jpg'
+    path = '../test/imgs/o2.jpg'
     img = cv2.imread(path)
     # img = cv2.resize(img, (-1, -1), fx=1.6, fy=1.6)
     my_warp = cv2.warpPerspective(img, scaled_overhead_hmatrix2, dsize=target_shape)
@@ -104,25 +108,3 @@ if __name__ == '__main__':
 
     cv2.imwrite('my_transform.jpg', my_warp)
     cv2.imwrite('transform.jpg', warp)
-
-    # if outputFlag:
-    #     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    #     output = cv2.VideoWriter('./IPM.avi', fourcc, 25, target_shape)
-    # while True:
-    #     _, frame = camera.read()
-    #     # scale = scale_image(frame.shape[:2], (900, 1600), scaleUp=True)
-    #     # frame = cv2.resize(frame, (-1, -1), fx=scale, fy=scale)
-    #     warped1 = cv2.warpPerspective(frame, scaled_overhead_hmatrix1, dsize=target_shape)
-    #     # warped2 = cv2.warpPerspective(frame, scaled_overhead_hmatrix1, dsize=target_shape)
-    #     if outputFlag:
-    #         output.write(warped1)
-    #     frame = cv2.resize(frame, (-1, -1), fx=0.5, fy=0.5)
-    #     cv2.imshow('warp1', warped1)
-    #     # cv2.imshow('warp2', warped2)
-    #     cv2.imshow('origin', frame)
-    #     if cv2.waitKey(1) == 27:
-    #         cv2.destroyAllWindows()
-    #         camera.release()
-    #         if outputFlag:
-    #             output.release()
-    #         break

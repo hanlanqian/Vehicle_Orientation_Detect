@@ -91,6 +91,7 @@ class YoloTensorrt():
             bindings[name] = Binding(name, dtype, shape, data, int(data.data_ptr()))
             if model.binding_is_input(index) and dtype == np.float16:
                 fp16 = True
+                print('using fp16')
         binding_addrs = OrderedDict((n, d.ptr) for n, d in bindings.items())
         context = model.create_execution_context()
         batch_size = bindings['images'].shape[0]

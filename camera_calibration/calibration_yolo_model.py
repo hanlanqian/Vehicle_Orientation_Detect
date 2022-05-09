@@ -16,7 +16,7 @@ from yolov5.model import YoloTensorrt
 from openpifpaf.predictor import Predictor
 from time import time
 
-good_features_parameters = dict(maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7, useHarrisDetector=True,
+good_features_parameters = dict(maxCorners=50, qualityLevel=0.3, minDistance=7, blockSize=7, useHarrisDetector=True,
                                 k=0.04)
 optical_flow_parameters = dict(winSize=(21, 21), minEigThreshold=1e-4)
 
@@ -71,7 +71,7 @@ class Calibration_Yolo(object):
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # 均衡化
         # self.roi = np.zeros()
 
-    def run(self):
+    def run(self, threshold=0.5, view_process=False):
         self.frame_count = 0
         _, frame = self.camera.read()
         # if not self.roi:
@@ -130,11 +130,13 @@ class Calibration_Yolo(object):
                 if len(boxes) > 0:
                     for box in boxes:
                         mask[box[1]:box[3], box[0]:box[2]] = 255
-                        points = self.lines_from_box(current_medianBlur, background, box, drawFlag=True)
+                        points = self.lines_from_box(current_medianBlur, background, box, threshold=threshold,
+                                                     winSize=9,
+                                                     drawFlag=view_process)
                         if points is not None:
                             self.edgelets.append(points)
                     for x, y in [np.int32(tr[-1]) for tr in self.features]:
-                        cv2.circle(mask, (x, y), 5, 0, -1)
+                        cv2.circle(mask, (x, y), 10, 0, -1)
 
                 # good tracker
                 p = cv2.goodFeaturesToTrack(self.current_frame, mask=mask, **good_features_parameters)
@@ -145,16 +147,17 @@ class Calibration_Yolo(object):
 
             self.frame_count += 1
             self.previous_frame = self.current_frame.copy()
-            cv2.imshow('vehicle tracks', frame)
+            cv2.imshow('frame', frame)
             print(f'fps:{1 / (time() - start)}')
             if cv2.waitKey(1) == 27:
-                self.yolo.release()
+                # cv2.imwrite('frame1.jpg', frame)
                 self.camera.release()
                 cv2.destroyAllWindows()
                 break
 
     def detect_orientation(self):
         self.frame_count = 0
+        orientations = []
         while True:
             flag, original_frame = self.camera.read()
             frame = original_frame.copy()
@@ -181,8 +184,11 @@ class Calibration_Yolo(object):
                         points_IPM = points_IPM / points_IPM[:, -1].reshape(-1, 1)
                         diff = points_IPM[0] - points_IPM[1]
                         orientation = math.degrees(np.arctan(diff[1] / diff[0]))
-                        cv2.putText(frame, "angle:" + str(orientation), box[:2], cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        orientations.append(orientation)
+                        cv2.putText(frame, "angle:" + str(np.around(orientation, 3)), box[:2], cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
                                     (255, 255, 0), 2)
+                        self.frame_count += 1
 
                 # warp = cv2.warpPerspective(display, self.perspective, self.targets_shape)
                 # x_scale, y_scale = scale_image(warp.shape, (900, 1600), force=True)
@@ -193,7 +199,8 @@ class Calibration_Yolo(object):
                 # cv2.imshow('warp', warp)
 
                 if cv2.waitKey(1) & 0xFF == 27:
-                    cv2.imwrite('frame.jpg', original_frame)
+                    print(f"平均角度为{np.average(np.abs(orientations))}")
+                    cv2.imwrite('frame1.jpg', original_frame)
                     self.camera.release()
                     cv2.destroyAllWindows()
                     break
@@ -220,7 +227,7 @@ class Calibration_Yolo(object):
         img = np.ones((640, 640, 3), dtype=np.uint8)
         self.perdictor.numpy_image(img)
 
-    def get_keypoints(self, image):
+    def get_keypoints(self, image, all=False):
         img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         predictions, gt_anns, image_meta = self.perdictor.numpy_image(img)
         if predictions:
@@ -229,8 +236,10 @@ class Calibration_Yolo(object):
             # pair_flag, pair_keypoints = get_pair_keypoints(index, ktype='vertical')
             pair_flag, pair_keypoints = get_pair_keypoints(index, ktype='horizontal')
             if pair_flag:
-                return pair_flag, data[pair_keypoints[0]]
-                # return pair_flag, data[index]
+                if all:
+                    return pair_flag, data[index]
+                else:
+                    return pair_flag, data[pair_keypoints[0]]
             else:
                 return pair_flag, None
         else:
@@ -253,26 +262,24 @@ class Calibration_Yolo(object):
             length += np.sqrt(diff_x * diff_x + diff_y * diff_y)
         return length / len(track)
 
-    def draw_all_tracks(self, save_name='all_tracks.jpg', save_path='./', save_tracks_data=False):
+    def draw_all_tracks(self, save_name='all_tracks.jpg', save_path='./'):
         display = self.init_frame.copy()
         cv2.polylines(display, [np.int32(tr) for tr in self.tracks], False, (0, 255, 0))
         cv2.imwrite(os.path.join(save_path, save_name), display)
-        if save_tracks_data:
-            with open(os.path.join(save_path, 'tracks.data'), 'wb') as f:
-                pickle.dump(self.tracks, f)
 
-    def lines_from_box(self, current, background, box, drawFlag=False):
+    def lines_from_box(self, current, background, box, winSize=9, threshold=0.5, drawFlag=False):
 
         vehicle_current = current[box[1]:box[3], box[0]:box[2]]
 
         vehicle_background = background[box[1]:box[3], box[0]:box[2]]
         # vehicle_current_preprocess = self.clahe.apply(vehicle_current)
         # vehicle_background_preprocess = self.clahe.apply(vehicle_background)
-
+        origin_edges = cv2.Canny(vehicle_current, 255 / 2, 255)
         edges = cv2.Canny(vehicle_current, 255 / 2, 255) - cv2.Canny(vehicle_background, 255 / 2, 255)
-        orientation, quality = neighborhood(edges)
-        accumulation, t = accumulate_orientation(orientation, quality)
+        orientation, quality = neighborhood(edges, winSize=winSize)
+        accumulation, t = accumulate_orientation(orientation, quality, threshold=threshold)
         res = cv2.addWeighted(accumulation, 0.9, edges, 0.1, 0)
+        _, res = cv2.threshold(res, 0, 255, cv2.THRESH_OTSU)
         # _, res = cv2.threshold(res, np.percentile(res[res!=0], 100 * (1 - threshold)), 255, cv2.THRESH_BINARY)
         # thres, edges = cv2.threshold(quality, 0, 255, cv2.THRESH_OTSU)
         # lines = get_lines(edges, orientation, box)
@@ -289,10 +296,15 @@ class Calibration_Yolo(object):
                 cv2.imshow('frame', mask)
                 cv2.imshow('car', vehicle_current)
                 cv2.imshow('edges', edges)
-                cv2.waitKey(0)
+                cv2.imshow('res', res)
+                if cv2.waitKey(0) == 27:
+                    cv2.imwrite('./origin_edge.jpg', origin_edges)
+                    cv2.imwrite('./edges.jpg', edges)
+                    cv2.imwrite('./res.jpg', res)
                 cv2.destroyWindow('frame')
                 cv2.destroyWindow('car')
                 cv2.destroyWindow('edges')
+                cv2.destroyWindow('res')
         return points
 
     def get_vp1(self, save_path, visualize=False):
@@ -305,6 +317,7 @@ class Calibration_Yolo(object):
         self.vp_1 = vps[0][:2]
 
         if visualize:
+            self.draw_all_tracks(save_path=f"{save_path}/new/")
             img = cv2.cvtColor(self.init_frame, cv2.COLOR_BGR2RGB)
             print("numbers of vps", len(vps))
             size = self.DiamondSpace.size
@@ -315,7 +328,7 @@ class Calibration_Yolo(object):
             ax[0].imshow(self.DiamondSpace.attach_spaces(), cmap="Greys", extent=(
                 (-size + 0.5) / scale, (size - 0.5) / scale, (size - 0.5) / scale,
                 (-size + 0.5) / scale))
-            ax[0].set(title="Accumulator", xticks=np.linspace(-size + 1, size - 1, 5) / scale,
+            ax[0].set(xticks=np.linspace(-size + 1, size - 1, 5) / scale,
                       yticks=np.linspace(-size + 1, size - 1, 5) / scale)
             ax[0].plot(vpd_s[0, 0] / scale, vpd_s[0, 1] / scale, "ro", markersize=11)
             # ax[0].plot(vpd_s[1:, 0] / scale, vpd_s[1:, 1] / scale, "go", markersize=11)
@@ -325,6 +338,13 @@ class Calibration_Yolo(object):
             ax[1].set(title="first vanishing point in image")
             ax[1].plot(vps[0, 0], vps[0, 1], 'ro', markersize=11)
             # ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
+
+            ax[0].set_title(label="Accumulator", fontsize=30)
+            ax[0].tick_params(axis='x', labelsize=20)
+            ax[0].tick_params(axis='y', labelsize=20)
+            ax[1].tick_params(axis='x', labelsize=20)
+            ax[1].tick_params(axis='y', labelsize=20)
+            ax[1].set_title("first vanishing point in image", fontsize=30)
 
             plt.savefig(f'{save_path}/new/first_vp1.jpg')
 
@@ -337,7 +357,13 @@ class Calibration_Yolo(object):
         # vps中权重最大的一个点取为第二消失点
         if len(vps) <= 0:
             raise Exception("Fail to detect the second vanishing point.")
+
+        ## get the best
+        # first_filter = vps[np.bitwise_and(values == values.max(), vps[:, -1] == 1)]
+        # self.vp_2 = first_filter[np.linalg.norm(first_filter, axis=1).argmin()][:2]
+
         self.vp_2 = vps[0][:2]
+
         if visualize:
             img = cv2.cvtColor(self.init_frame, cv2.COLOR_BGR2RGB)
             print("numbers of vps", len(vps))
@@ -347,23 +373,29 @@ class Calibration_Yolo(object):
             edgelets_filter = draw_point_line(self.init_frame, points[index], visualFlag=False)
             cv2.imwrite(f'{save_path}/new/edgelets.jpg', edgelets)
             cv2.imwrite(f'{save_path}/new/edgelets_filter.jpg', edgelets_filter)
-            # 第一消失点可视化
+            # 第二消失点可视化
             _, ax = plt.subplots(1, 2, figsize=(20, 10))
             ax[0].imshow(self.DiamondSpace.attach_spaces(), cmap="Greys", extent=(
                 (-size + 0.5) / scale, (size - 0.5) / scale, (size - 0.5) / scale,
                 (-size + 0.5) / scale))
-            ax[0].set(title="Accumulator", xticks=np.linspace(-size + 1, size - 1, 5) / scale,
+            ax[0].set(xticks=np.linspace(-size + 1, size - 1, 5) / scale,
                       yticks=np.linspace(-size + 1, size - 1, 5) / scale)
             ax[0].plot(vpd_s[0, 0] / scale, vpd_s[0, 1] / scale, "ro", markersize=11)
             # ax[0].plot(vpd_s[1:, 0] / scale, vpd_s[1:, 1] / scale, "go", markersize=11)
             ax[0].invert_yaxis()
 
             ax[1].imshow(img)
-            ax[1].set(title="first vanishing point in image")
+            ax[1].set(xticks=np.linspace(-18e4, 0, 5))
+            # ax[1].set(title=)
 
             ax[1].plot(vps[0, 0], vps[0, 1], 'ro', markersize=11)
-            # ax[1].plot(vps[1:, 0], vps[1:, 1], 'go', markersize=11)
-            # ax[1].plot()
+
+            ax[0].set_title(label="Accumulator", fontsize=30)
+            ax[0].tick_params(axis='x', labelsize=20)
+            ax[0].tick_params(axis='y', labelsize=20)
+            ax[1].tick_params(axis='x', labelsize=20)
+            ax[1].tick_params(axis='y', labelsize=20)
+            ax[1].set_title("second vanishing point in image", fontsize=30)
             plt.savefig(f'{save_path}/new/first_vp2.jpg')
 
     def save_calibration(self, save_path, visualize=False):

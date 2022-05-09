@@ -1,9 +1,9 @@
-# Vehicle_Orientation_Detect
+# 车辆方向检测
 
-## Camera Calibration
+## 相机标定
 
-- Vanishing Points Detect
-    1. first VP
+- 消失点检测
+    1. 第一消失点
         - Get the ROI of image by vehicle detect
         - track the vehicles by KLT tracker(**optical flow method**)
         - push all tracks gathered in last step to **DiamondSpace** to get the intersections(which is considered as **First VP**) 

@@ -18,7 +18,7 @@ horizontal_pairs_index = [[0, 1], [2, 3], [4, 5], [6, 16], [7, 19], [8, 18], [9,
 vertical_pairs_index = [[0, 11], [1, 10], [2, 13], [3, 12], [4, 15], [5, 14], [7, 8], [18, 19]]
 
 
-def get_pair_keypoints(index, ktype='horizontal'):
+def get_pair_keypoints(keypoints, ktype='horizontal'):
     pair_keypoints = []
     flag = False
     if ktype == 'horizontal':
@@ -28,8 +28,8 @@ def get_pair_keypoints(index, ktype='horizontal'):
         pairs = vertical_pairs_index
     else:
         return flag, None
-    for count, i in enumerate(index):
-        for j in index[count:]:
+    for count, i in enumerate(keypoints):
+        for j in keypoints[count:]:
             if [i, j] in pairs:
                 pair_keypoints.append([i, j])
     flag = True if len(pair_keypoints) else False
