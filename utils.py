@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 
 # keypoints = {'front_up_right': 0, 'front_up_left': 1, 'front_light_right': 2, 'front_light_left': 3,
@@ -69,3 +70,11 @@ def scale_image(shape, dst_shape, scaleUp=False, force=False):
         return scale
     else:
         return x_scale, y_scale
+
+
+def getROIMouseEvent(event, x, y, flags, param):
+    if event == cv2.EVENT_LBUTTONUP:
+        frame, roi = param
+        cv2.circle(frame, (x, y), 3, (0, 0, 255), 2)
+        roi.append((x, y))
+        cv2.imshow('getROI', frame)

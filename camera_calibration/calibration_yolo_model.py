@@ -2,7 +2,6 @@ import math
 import cv2
 import os
 import torch
-import pickle
 import numpy as np
 import matplotlib.pylab as plt
 
@@ -32,7 +31,7 @@ def CLAHE(img, ):
 
 
 class Calibration_Yolo(object):
-    def __init__(self, video_src, input_shape=(900, 1600), roi=None, detect_interval=20, track_interval=10):
+    def __init__(self, video_src, input_shape=(900, 1600), detect_interval=20, track_interval=10):
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.tracks = []  # vehicle tracks
@@ -67,9 +66,17 @@ class Calibration_Yolo(object):
         self.principal_point = None
 
         # preprocess
-        # todo 需要增加roi区域输入
-        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # 均衡化
-        # self.roi = np.zeros()
+        self.roi = None
+        # self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # 均衡化
+
+    def setROI(self, roi):
+        self.roi = np.array(roi).astype(np.int32).reshape(1, -1, 2)
+        if self.scale:
+            self.mask = np.zeros((int(self.frame_height * self.scale), int(self.frame_width * self.scale)),
+                                 dtype=np.uint8)
+        else:
+            self.mask = np.zeros((self.frame_height, self.frame_width), dtype=np.uint8)
+        self.mask = cv2.fillPoly(self.mask, self.roi, 255)
 
     def run(self, threshold=0.5, view_process=False):
         self.frame_count = 0
@@ -79,6 +86,8 @@ class Calibration_Yolo(object):
         if self.scale != 1:
             frame = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_LINEAR)
         self.init_frame = frame
+        if self.roi is not None:
+            frame = cv2.bitwise_and(frame, frame, mask=self.mask)
         background = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         background = cv2.medianBlur(background, 3)
         self.principal_point = np.array([self.frame_height * self.scale / 2, self.frame_width * self.scale / 2])
@@ -95,7 +104,8 @@ class Calibration_Yolo(object):
 
             if self.scale != 1:
                 frame = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_LINEAR)
-
+            if self.roi is not None:
+                frame = cv2.bitwise_and(frame, frame, mask=self.mask)
             self.current_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             current_medianBlur = cv2.medianBlur(self.current_frame, 3)
             background = cv2.addWeighted(current_medianBlur, 0.05, background, 0.95, 0)
@@ -160,13 +170,15 @@ class Calibration_Yolo(object):
         orientations = []
         while True:
             flag, original_frame = self.camera.read()
-            frame = original_frame.copy()
             if not flag:
                 print('no frame grabbed!')
                 break
             else:
+                frame = original_frame.copy()
                 if self.scale != 1:
                     frame = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_LINEAR)
+                if self.roi is not None:
+                    frame = cv2.bitwise_and(frame, frame, mask=self.mask)
                 start = time()
                 boxes = self.detect_car(frame)
                 print(f"detect: {time() - start}")
@@ -277,7 +289,7 @@ class Calibration_Yolo(object):
         origin_edges = cv2.Canny(vehicle_current, 255 / 2, 255)
         edges = cv2.Canny(vehicle_current, 255 / 2, 255) - cv2.Canny(vehicle_background, 255 / 2, 255)
         orientation, quality = neighborhood(edges, winSize=winSize)
-        accumulation, t = accumulate_orientation(orientation, quality, threshold=threshold)
+        accumulation, t = accumulate_orientation(orientation, quality, winSize=winSize, threshold=threshold)
         res = cv2.addWeighted(accumulation, 0.9, edges, 0.1, 0)
         _, res = cv2.threshold(res, 0, 255, cv2.THRESH_OTSU)
         # _, res = cv2.threshold(res, np.percentile(res[res!=0], 100 * (1 - threshold)), 255, cv2.THRESH_BINARY)
@@ -351,8 +363,9 @@ class Calibration_Yolo(object):
     def get_vp2(self, save_path, visualize=False):
         points = np.vstack(self.edgelets)
         lines = start_end_line(points)
-        index = self.DiamondSpace.filter_lines_from_peak(self.vp_1, lines, min(self.frame_width * self.scale,
-                                                                               self.frame_height * self.scale) / 2)
+        # index = self.DiamondSpace.filter_lines_from_vp(self.vp_1, lines, 40)
+        index = self.DiamondSpace.filter_lines_from_vp(self.vp_1, lines, min(self.frame_width * self.scale,
+                                                                             self.frame_height * self.scale) / 2)
         vps, values, vpd_s = self.DiamondSpace.find_peaks(t=0.9, )
         # vps中权重最大的一个点取为第二消失点
         if len(vps) <= 0:

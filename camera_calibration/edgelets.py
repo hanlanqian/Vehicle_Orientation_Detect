@@ -41,9 +41,9 @@ def neighborhood(grad, winSize=9):
     return orientations, quality
 
 
-def accumulate_orientation(orientations, quality, threshold=0.25):
+def accumulate_orientation(orientations, quality, winSize=9, threshold=0.25):
     if (quality == 0).all():
-        print(quality)
+        raise
     mask = np.zeros_like(quality)
     thres = np.percentile(quality[quality != 0], 100 * (1 - threshold))
     y_index, x_index = np.where(quality >= thres)
@@ -53,7 +53,7 @@ def accumulate_orientation(orientations, quality, threshold=0.25):
         if dx < 1e-6:
             continue
         slope = dy / dx
-        x = np.arange(j - 4, j + 4)
+        x = np.arange(j - int((winSize - 1) / 2), j + int((winSize - 1) / 2))
         y = np.around(i - slope * j + slope * x).astype(np.int)
         if (x < width).all() and (y < height).all():
             try:
@@ -109,7 +109,7 @@ if __name__ == '__main__':
     thres, edges = cv2.threshold(quality, 0, 255, cv2.THRESH_OTSU)
     lines = get_lines(edges, orientation)
     peak = (147.45110199, -238.7251731)
-    DS.filter_lines_from_peak(peak, lines)
+    DS.filter_lines_from_vp(peak, lines)
     p, v, p_ds = DS.find_peaks(t=0.9)
 
     A = DS.attach_spaces()

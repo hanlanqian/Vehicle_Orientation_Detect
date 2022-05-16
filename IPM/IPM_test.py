@@ -39,7 +39,6 @@ def scale_image(shape, dst_shape, scaleUp=False, force=False):
 
 
 if __name__ == '__main__':
-
     outputFlag = False
     path = r"E:\datasets\0330数据集\o1.mp4"
     # path = r"E:\datasets\0330数据集\o2.mp4"
@@ -69,9 +68,9 @@ if __name__ == '__main__':
     # target_shape = (1600, 900)
 
     ## video1
-    overhead_hmatrix = np.array([[4.77825655e+00, 5.85721771e+00, -9.01410392e+03],
-                                 [7.15577215e-01, 1.63481871e+01, -1.44693566e+04],
-                                 [1.07432598e-04, 2.67615931e-03, 1.00000000e+00]])
+    # overhead_hmatrix = np.array([[4.77825655e+00, 5.85721771e+00, -9.01410392e+03],
+    #                              [7.15577215e-01, 1.63481871e+01, -1.44693566e+04],
+    #                              [1.07432598e-04, 2.67615931e-03, 1.00000000e+00]])
     ## video2
     # overhead_hmatrix = np.array([[-4.39995719e+00, - 5.14711974e+00, 8.66393080e+03],
     #                              [-6.93979612e-01, - 1.68290056e+01, 1.37317746e+04],
@@ -79,6 +78,11 @@ if __name__ == '__main__':
     # overhead_hmatrix = np.array([[-6.13831606e+00, - 7.63141996e+00, 1.25941655e+04],
     #                              [-1.04311421e+00, - 2.53824458e+01, 2.09269573e+04],
     #                              [-2.75777412e-04, - 3.60123953e-03, 1.00000000e+00]])
+    ## video3
+    overhead_hmatrix = np.array([[-5.00748865e+00, - 1.47279078e+00, 5.18716912e+03],
+                                 [-6.41713842e-01, - 2.39038406e+01, 2.00874080e+04],
+                                 [1.59162709e-04, - 3.68197694e-03, 1.00000000e+00]])
+
     est_range_u, est_range_v = modified_matrices_calculate_range_output_without_translation(height, width,
                                                                                             overhead_hmatrix,
                                                                                             verbose=False, opt=True)
@@ -88,8 +92,6 @@ if __name__ == '__main__':
     scaled_overhead_hmatrix1 = get_scaled_matrix(overhead_hmatrix, target_shape, est_range_u, est_range_v,
                                                  strict=strict)
     scaled_overhead_hmatrix2 = convertToBirdView(K, rotation, (width, height), target_shape, strict)
-
-
 
     my = scaled_overhead_hmatrix2 / scaled_overhead_hmatrix2[-1, -1]
     diff = (my - scaled_overhead_hmatrix1) / scaled_overhead_hmatrix1

@@ -357,10 +357,17 @@ class DiamondSpace:
 
         return np.vstack(peaks), np.hstack(values), np.vstack(peaks_ds)
 
-    def filter_lines_from_peak(self, peak, lines, close_threshold=200):
+    def filter_lines_from_vp(self, vp, lines, close_threshold=200):
+        """
+        filter lines
+        :param vp: 
+        :param lines: 
+        :param close_threshold: 
+        :return: 
+        """
         new_lines = []
         index = []
-        for i, flag, line in self.is_close(peak, lines, close_threshold):
+        for i, flag, line in self.is_close(vp, lines, close_threshold):
             if not flag:
                 index.append(i)
                 new_lines.append(line)
@@ -369,12 +376,12 @@ class DiamondSpace:
         return index
 
     @staticmethod
-    def is_close(peak, lines, threshold=50):
+    def is_close(vp, lines, threshold=50):
         for i, line in enumerate(lines):
             a, b, c = line
             # if i==361:
             # print(abs(a * peak[0] + b * peak[1] + c) / np.linalg.norm(np.array([a, b])))
-            if abs(a * peak[0] + b * peak[1] + c) / np.linalg.norm(np.array([a, b])) <= threshold:
+            if abs(a * vp[0] + b * vp[1] + c) / np.linalg.norm(np.array([a, b])) <= threshold:
                 yield i, True, line
             else:
                 yield i, False, line

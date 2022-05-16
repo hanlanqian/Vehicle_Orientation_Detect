@@ -295,7 +295,7 @@ class Calibration_Yolo(object):
     def get_vp2(self, visualize=False):
         points = np.vstack(self.edgelets)
         lines = start_end_line(points)
-        index = self.DiamondSpace.filter_lines_from_peak(self.vp_1, lines, min(self.frame_width, self.frame_height) / 2)
+        index = self.DiamondSpace.filter_lines_from_vp(self.vp_1, lines, min(self.frame_width, self.frame_height) / 2)
         vps, values, vpd_s = self.DiamondSpace.find_peaks(t=0.9, )
         # vps中权重最大的一个点取为第二消失点
         self.vp_2 = vps[0][:2]
