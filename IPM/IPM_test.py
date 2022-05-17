@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from utils import get_scaled_homography, convertToBirdView, \
     modified_matrices_calculate_range_output_without_translation, get_scaled_matrix
-from camera_calibration.calibration_utils import computeCameraCalibration
+from detection_model.calibration_utils import computeCameraCalibration
 
 
 # points1 = np.array([[814, 849], [1145, 834], [1059, 918], [708, 933]])

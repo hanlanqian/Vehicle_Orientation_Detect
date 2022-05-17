@@ -1,7 +1,8 @@
 opencv-contrib-python==4.5.2.54
 torch==1.10.1+cu102
-openpifpaf
+openpifpaf==0.12.14
 numpy
 matplotlib
 scikit-image
 scipy>=1.4.1
+tensorrt==8.2.1.8

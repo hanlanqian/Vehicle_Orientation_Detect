@@ -4,7 +4,7 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from camera_calibration.diamondSpace import DiamondSpace
+from detection_model.diamondSpace import DiamondSpace
 
 
 def neighborhood(grad, winSize=9):
@@ -100,7 +100,7 @@ def get_lines(edges, orientation, box=None):
 if __name__ == '__main__':
     DS = DiamondSpace(720)
 
-    # path = './camera_calibration/car.jpg'
+    # path = './detection_model/car.jpg'
     path = 'pics/cars.jpg'
     img = cv2.imread(path)
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

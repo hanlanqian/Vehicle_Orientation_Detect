@@ -4,39 +4,7 @@ import cv2
 import numpy as np
 from utils import get_scaled_homography, convertToBirdView, \
     modified_matrices_calculate_range_output_without_translation, get_scaled_matrix
-from camera_calibration.calibration_utils import computeCameraCalibration
-
-
-# points1 = np.array([[814, 849], [1145, 834], [1059, 918], [708, 933]])
-# earth_data = np.array([[1.27548415e+00, 6.65416173e+00, -2.30653026e-02],
-#                        [1.97012298e-01, 4.77941972e+00, -3.09488910e-02],
-#                        [1.07432598e-04, 2.67615931e-03, 1.00000000e+00]])
-
-# modified
-# array([[-2.20253514e-02, -9.68560923e-02,  4.62626941e-04],
-#        [-1.52702030e-02, -2.05552117e-01,  4.50651419e-05],
-#        [-1.79486038e-05, -1.87279867e-04, -5.91611670e-02]])
-
-
-def scale_image(shape, dst_shape, scaleUp=False, force=False):
-    """
-
-    :param shape: (height, width)
-    :param dst_shape: (height, width)
-    :param scaleUp:
-    :param force:
-    :return:
-    """
-    x_scale = dst_shape[1] / shape[1]
-    y_scale = dst_shape[0] / shape[0]
-    if not force:
-        scale = x_scale if x_scale < y_scale else y_scale
-        if not scaleUp:
-            scale = min(scale, 1)
-        return scale
-    else:
-        return x_scale, y_scale
-
+from detection_model.calibration_utils import computeCameraCalibration
 
 if __name__ == '__main__':
     path = r"E:\datasets\0330数据集\eval\o1.mp4"
@@ -64,7 +32,6 @@ if __name__ == '__main__':
     strict = False
     # target_shape = (width, height)
     target_shape = (1600, 2000)
-    # target_shape = (1600, 900)
 
     ## video1
     # overhead_hmatrix = np.array([[4.77825655e+00, 5.85721771e+00, -9.01410392e+03],

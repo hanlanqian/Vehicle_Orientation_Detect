@@ -1,3 +1,4 @@
+import logging
 import math
 import cv2
 import os
@@ -5,11 +6,11 @@ import torch
 import numpy as np
 import matplotlib.pylab as plt
 
-from camera_calibration.calibration_utils import cvt_diamond_space, start_end_line, draw_point_line, \
+from detection_model.calibration_utils import cvt_diamond_space, start_end_line, draw_point_line, \
     computeCameraCalibration, draw_points
 from utils import get_pair_keypoints, scale_image
-from camera_calibration.edgelets import neighborhood, accumulate_orientation
-from camera_calibration.diamondSpace import DiamondSpace
+from detection_model.edgelets import neighborhood, accumulate_orientation
+from detection_model.diamondSpace import DiamondSpace
 from IPM.utils import convertToBirdView
 from yolov5.model import YoloTensorrt
 from openpifpaf.predictor import Predictor
@@ -21,6 +22,11 @@ optical_flow_parameters = dict(winSize=(21, 21), minEigThreshold=1e-4)
 
 
 def CLAHE(img, ):
+    """
+    均衡化
+    :param img:
+    :return:
+    """
     b, g, r = cv2.split(img)
     clahe = cv2.createCLAHE(clipLimit=0.2, tileGridSize=(8, 8))
     b = clahe.apply(b)
@@ -69,6 +75,10 @@ class Calibration_Yolo(object):
         self.roi = None
         # self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # 均衡化
 
+        # logger
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        self.logger = logging.getLogger(__name__)
+
     def setROI(self, roi):
         self.roi = np.array(roi).astype(np.int32).reshape(1, -1, 2)
         if self.scale:
@@ -79,6 +89,7 @@ class Calibration_Yolo(object):
         self.mask = cv2.fillPoly(self.mask, self.roi, 255)
 
     def run(self, threshold=0.5, view_process=False):
+        self.logger.info("starting calibrate from video......")
         self.frame_count = 0
         _, frame = self.camera.read()
         # if not self.roi:
@@ -211,6 +222,7 @@ class Calibration_Yolo(object):
                 # cv2.imshow('warp', warp)
 
                 if cv2.waitKey(1) & 0xFF == 27:
+                    ## 计算检测得到的平均方向角度
                     print(f"平均角度为{np.average(np.abs(orientations))}")
                     cv2.imwrite('frame1.jpg', original_frame)
                     self.camera.release()
@@ -218,7 +230,9 @@ class Calibration_Yolo(object):
                     break
 
     def load_yolo_model(self, engine_file, class_json, verbose=False):
+        self.logger.info("loading yolov5 tensorRT engine.......")
         self.yolo = YoloTensorrt(engine_file, class_json, verbose=verbose)
+        self.logger.info("yolov5 tensorRT model loads successfully")
 
     def detect_car(self, frame, threshold=0.5):
         self.yolo.reload_images(frame)
@@ -233,6 +247,7 @@ class Calibration_Yolo(object):
             return []
 
     def load_keypoint_model(self, ):
+        self.logger.info("loading keypoint detector model")
         self.perdictor = Predictor(checkpoint="shufflenetv2k16-apollo-24")
 
         # warmup
@@ -433,6 +448,8 @@ class Calibration_Yolo(object):
         return calibration
 
     def calibrate(self, save_path, visualize=False, ):
+        self.logger.info(f"saving the calibration information to {save_path}")
+
         if not os.path.exists(os.path.join(save_path, 'new')):
             os.makedirs(os.path.join(save_path, 'new'), )
         self.get_vp1(save_path, visualize)
@@ -440,6 +457,7 @@ class Calibration_Yolo(object):
         self.save_calibration(save_path, visualize)
 
     def load_calibration(self, path, dst_shape=(1600, 900), strict=False):
+        self.logger.info(f"loading the calibration information from {path}")
         try:
             with open(path, 'rb') as f:
                 calibration = np.load(f, allow_pickle=True).tolist()
@@ -457,5 +475,5 @@ class Calibration_Yolo(object):
             self.perspective = convertToBirdView(self.intrinsic, self.rotation, (self.frame_width, self.frame_height),
                                                  target_shape=target_shape, strict=strict)
         except Exception as e:
-            print('failed to load calibration')
+            self.logger.error(f'failed to load calibration, error message{e}')
             raise e

@@ -1,7 +1,3 @@
-import sys
-
-sys.path.append(r'E:\Pycharm\mine\Vehicle_Orientation_Detect\SSD')
-
 from calibration_model import Calibration
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 import argparse
 import cv2
 
-from camera_calibration.calibration_yolo_model import Calibration_Yolo
+from detection_model.calibration_yolo_model import Calibration_Yolo
 from utils import getROIMouseEvent
 
 
