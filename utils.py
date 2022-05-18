@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-# keypoints = {'front_up_right': 0, 'front_up_left': 1, 'front_light_right': 2, 'front_light_left': 3,
+# keypoints_index = {'front_up_right': 0, 'front_up_left': 1, 'front_light_right': 2, 'front_light_left': 3,
 #              'front_low_right': 4,
 #              'front_low_left': 5, 'central_up_left': 6, 'front_wheel_left': 7, 'rear_wheel_left': 8,
 #              'rear_corner_left': 9,
