@@ -20,8 +20,7 @@ This is a two-stage vehicle orientation detection algorithm.
         - `engine` (required) the path of yolov5 TensorRT engine
         - `classes` (optional) the json file containing all detect targets
         - `roi` (optional) whether select the ROI of the scenarios，the default value is False
-        - `caliFlag` (required) the True value represents **calibration stage**, the False value represents **
-          orientation detection stage**
+        - `caliFlag` (required) the True value represents **calibration stage**, the False value represents **orientation detection stage**
         - `calibration` (required when caliFlag is False) the utilized calibration file in second stage
         - `threshold` (optional) the threshold filtering vehicle edgelets, the default value is 0.5
         - `visualize` (optional) whether visualize the process of getting vehicle edgelets, the default value is False
@@ -51,6 +50,7 @@ python app.py --source ${video path} --engine ${tensorRT engine} --caliFlag Fals
 - `yolov5` yolov5 detectors optimized by TensorRT and inference api
 - `results` experiment result data
 - `test` some test samples and script for test experiment
+- `dataset` Experimental dataset folder
 - `image` images and tables generated during the experiment
 - `app.py` the entrance of entire program
 
@@ -93,7 +93,7 @@ python app.py --source ${video path} --engine ${tensorRT engine} --caliFlag Fals
 - Get Bird-View image plane
     - utilize the calibration result to map all pixel to bird-view image.
     - calculate the slope of key point connection as the orientation of vehicle.
-    
+
 ## Experiment Result
 
 According to the evaluation metrics mentioned in the thesis. We get the experiment result as following.
