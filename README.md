@@ -20,8 +20,7 @@ This is a two-stage vehicle orientation detection algorithm.
         - `engine` (required) the path of yolov5 TensorRT engine
         - `classes` (optional) the json file containing all detect targets
         - `roi` (optional) whether select the ROI of the scenarios，the default value is False
-        - `caliFlag` (required) the True value represents **calibration stage**, the False value represents **
-          orientation detection stage**
+        - `caliFlag` (required) the True value represents **calibration stage**, the False value represents **orientation detection stage**
         - `calibration` (required when caliFlag is False) the utilized calibration file in second stage
         - `threshold` (optional) the threshold filtering vehicle edgelets, the default value is 0.5
         - `visualize` (optional) whether visualize the process of getting vehicle edgelets, the default value is False
