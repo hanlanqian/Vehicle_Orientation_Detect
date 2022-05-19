@@ -38,12 +38,6 @@ if __name__ == '__main__':
     #                              [7.15577215e-01, 1.63481871e+01, -1.44693566e+04],
     #                              [1.07432598e-04, 2.67615931e-03, 1.00000000e+00]])
     ## video2
-    # overhead_hmatrix = np.array([[-4.39995719e+00, - 5.14711974e+00, 8.66393080e+03],
-    #                              [-6.93979612e-01, - 1.68290056e+01, 1.37317746e+04],
-    #                              [-4.22788632e-04, - 3.27005650e-03, 1.00000000e+00]])
-    # overhead_hmatrix = np.array([[-9.37738247e+01, - 1.14358323e+02, 1.89173825e+05],
-    #                              [-1.47522236e+01, - 3.90933926e+02, 3.19164358e+05],
-    #                              [1.53271919e-03, - 4.99285260e-02, 1.00000000e+00]])
     # overhead_hmatrix = np.array([[-1.45211933e+00, - 1.96693620e+00, 2.94800089e+03],
     #                              [-1.10548246e-01, - 2.32151317e+00, 1.29728367e+03],
     #                              [-2.44915563e-04, - 3.60979304e-03, 1.00000000e+00]])
@@ -51,11 +45,7 @@ if __name__ == '__main__':
     # overhead_hmatrix = np.array([[-5.00748865e+00, - 1.47279078e+00, 5.18716912e+03],
     #                              [-6.41713842e-01, - 2.39038406e+01, 2.00874080e+04],
     #                              [1.59162709e-04, - 3.68197694e-03, 1.00000000e+00]])
-
     ## video4
-    # overhead_hmatrix = np.array([[1.42394822e+01, 9.92448759e+00, - 8.67443366e+03],
-    #                              [3.60195921e-14, 6.64509169e+01, - 5.30278317e+04],
-    #                              [2.67934434e-17, 5.39374326e-03, 1.00000000e+00]])
     overhead_hmatrix = np.array([[2.36025363e+00, 8.31708423e-01, - 1.79635532e+03],
                                  [3.26078892e-01, 1.14880102e+01, - 9.25567409e+03],
                                  [-8.81537417e-05, 2.25715584e-03, 1.00000000e+00]])
@@ -72,21 +62,6 @@ if __name__ == '__main__':
     my = scaled_overhead_hmatrix2 / scaled_overhead_hmatrix2[-1, -1]
 
 
-    # unit = 100
-    # vector_y = np.array([unit, 0, 0])
-    # vector_x = np.array([0, unit, 0])
-    # unit_vector = np.vstack([vector_x, vector_y]).T
-    #
-    #
-    # transform = np.linalg.inv(scaled_overhead_hmatrix1) @ unit_vector
-    # my_transform = np.linalg.inv(my) @ unit_vector
-    # transform /= transform[-1, :]
-    # my_transform /= my_transform[-1, :]
-    # transform[0, :] -= principal_point[0]
-    # transform[1, :] -= principal_point[1]
-    # my_transform[0, :] -= principal_point[0]
-    # my_transform[1, :] -= principal_point[1]
-    # # cosDistance =
 
     def cosine_distance(a, b):
         if a.shape != b.shape:
@@ -108,16 +83,12 @@ if __name__ == '__main__':
 
     w_g, v_g = np.linalg.eig(scaled_overhead_hmatrix1)
     w, v = np.linalg.eig(my)
-    print('特征值：')
-    print(w, w_g)
     diff_w = np.abs(np.abs(w) - np.abs(w_g))
     diff_w /= np.sum(diff_w)
     error = 0
     for i in range(3):
-        # print(diff_w[i])
-        # print(cosine_distance(v[:, i], v_g[:, i]))
         error += diff_w[i] * cosine_distance(v[:, i], v_g[:, i])
-    print(error*100)
+    print(f"the calibration error is {error * 100}")
 # diff = (my - scaled_overhead_hmatrix1) / scaled_overhead_hmatrix1
 # error = np.average(np.power(diff, 2))
 # print(error)
@@ -125,7 +96,6 @@ if __name__ == '__main__':
 # path = '../test/imgs/o4.jpg'
 path = '../test/imgs/o1.jpg'
 img = cv2.imread(path)
-# img = cv2.resize(img, (-1, -1), fx=1.6, fy=1.6)
 my_warp = cv2.warpPerspective(img, scaled_overhead_hmatrix2, dsize=target_shape)
 warp = cv2.warpPerspective(img, scaled_overhead_hmatrix1, dsize=target_shape)
 

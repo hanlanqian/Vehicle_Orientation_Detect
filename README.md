@@ -20,7 +20,8 @@ This is a two-stage vehicle orientation detection algorithm.
         - `engine` (required) the path of yolov5 TensorRT engine
         - `classes` (optional) the json file containing all detect targets
         - `roi` (optional) whether select the ROI of the scenarios，the default value is False
-        - `caliFlag` (required) the True value represents **calibration stage**, the False value represents **orientation detection stage**
+        - `caliFlag` (required) the True value represents **calibration stage**, the False value represents **
+          orientation detection stage**
         - `calibration` (required when caliFlag is False) the utilized calibration file in second stage
         - `threshold` (optional) the threshold filtering vehicle edgelets, the default value is 0.5
         - `visualize` (optional) whether visualize the process of getting vehicle edgelets, the default value is False
@@ -48,7 +49,9 @@ python app.py --source ${video path} --engine ${tensorRT engine} --caliFlag Fals
     - `edgelets.py` the module provides function for detecting vehicle edges
 - `SSD` SSD detectors and inference api
 - `yolov5` yolov5 detectors optimized by TensorRT and inference api
+    - `weights` yolov5 onnx模型及TensorRT 引擎
 - `results` experiment result data
+- `IPM` bird-view transformation and the evaluation of calibration stage
 - `test` some test samples and script for test experiment
 - `dataset` Experimental dataset folder
 - `image` images and tables generated during the experiment

@@ -43,7 +43,9 @@
     - `edgelets.py` 检测车辆横向边缘模块
 - `SSD` SSD目标检测网络结构及其推理接口的实现
 - `yolov5` 优化后的yolov5 TensorRT推理引擎推理接口的实现
+    - `weights` yolov5 onnx模型及TensorRT 引擎
 - `results` 实验结果数据
+- `IPM` 鸟瞰图转换及相机标定阶段误差评估
 - `test` 实验过程中的一些测试样例及脚本
 - `dataset` 实验数据集
 - `image` 实验过程中产生的图表及论文中对应的图像
