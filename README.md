@@ -49,7 +49,7 @@ python app.py --source ${video path} --engine ${tensorRT engine} --caliFlag Fals
     - `edgelets.py` the module provides function for detecting vehicle edges
 - `SSD` SSD detectors and inference api
 - `yolov5` yolov5 detectors optimized by TensorRT and inference api
-    - `weights` yolov5 onnx模型及TensorRT 引擎
+    - `weights` yolov5 onnx model and TensorRT engine
 - `results` experiment result data
 - `IPM` bird-view transformation and the evaluation of calibration stage
 - `test` some test samples and script for test experiment
