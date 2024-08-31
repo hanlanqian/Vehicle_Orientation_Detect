@@ -1,4 +1,4 @@
-opencv-contrib-python==4.5.2.54
+opencv-contrib-python==4.8.1.78
 torch==1.13.1
 openpifpaf==0.12.14
 numpy
