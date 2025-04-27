@@ -1,5 +1,5 @@
 opencv-contrib-python==4.8.1.78
-torch==1.13.1
+torch==2.7.0
 openpifpaf==0.12.14
 numpy
 matplotlib
